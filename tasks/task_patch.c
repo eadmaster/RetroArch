@@ -31,6 +31,7 @@
 
 #include <encodings/crc32.h>
 
+#include "../retroarch.h"
 #include "../msg_hash.h"
 #include "../verbosity.h"
 
@@ -616,6 +617,9 @@ static bool apply_patch_content(uint8_t **buf,
    uint8_t *ret_buf         = *buf;
    uint64_t target_size     = 0;
    uint8_t *patched_content = NULL;
+   const int OSD_MSG_MAX_LEN = FILENAME_MAX + strlen(msg_hash_to_str(MSG_PATCH_LOADED));
+   char osd_msg[OSD_MSG_MAX_LEN]; 
+   memset( osd_msg, 0, OSD_MSG_MAX_LEN );
 
    RARCH_LOG("Found %s file in \"%s\", attempting to patch ...\n",
          patch_desc, patch_path);
@@ -626,6 +630,9 @@ static bool apply_patch_content(uint8_t **buf,
       free(ret_buf);
       *buf  = patched_content;
       *size = target_size;
+      /* show an OSD message */
+      snprintf(osd_msg, OSD_MSG_MAX_LEN, msg_hash_to_str(MSG_PATCH_LOADED), basename(patch_path));
+      runloop_msg_queue_push(osd_msg, 1, 180, false, NULL, MESSAGE_QUEUE_ICON_DEFAULT, MESSAGE_QUEUE_CATEGORY_INFO);
    }
    else
       RARCH_ERR("%s %s: %s #%u\n",
@@ -738,6 +745,7 @@ bool patch_content(
    bool allow_ups   = !is_bps_pref && !is_ips_pref;
    bool allow_ips   = !is_ups_pref && !is_bps_pref;
    bool allow_bps   = !is_ups_pref && !is_ips_pref;
+   int i = 1;
 
    if (    (unsigned)is_ips_pref
          + (unsigned)is_bps_pref
@@ -748,16 +756,18 @@ bool patch_content(
       return false;
    }
    
-   int i = 1;
-   while (     try_ips_patch(allow_ips, name_ips, buf, size)
-         || try_bps_patch(allow_bps, name_bps, buf, size)
-         || try_ups_patch(allow_ups, name_ups, buf, size))
+   for (i = 1; i < 10; i++)
    {
-        /* a valid patch file was found, switch to the next patch by changing the last char of the string */
-        i++;
-        name_ips[strlen(name_ips)-1] = '0'+i;
-        name_bps[strlen(name_bps)-1] = '0'+i;
-        name_ups[strlen(name_ups)-1] = '0'+i;
+      if ( !try_ips_patch(allow_ips, name_ips, buf, size)
+         && !try_bps_patch(allow_bps, name_bps, buf, size)
+         && !try_ups_patch(allow_ups, name_ups, buf, size))
+         break;
+      
+      /* else a valid patch file was found, switch to the next patch by changing the last char of the name string */
+      i++;
+      name_ips[strlen(name_ips)-1] = '0'+i;
+      name_bps[strlen(name_bps)-1] = '0'+i;
+      name_ups[strlen(name_ups)-1] = '0'+i;
    }
    
    if( i == 1 )
@@ -766,6 +776,11 @@ bool patch_content(
             msg_hash_to_str(MSG_DID_NOT_FIND_A_VALID_CONTENT_PATCH));
       return false;       
    }
+   
+   /* restore the previous name strings before returning */
+   name_ips[strlen(name_ips)-1] = 's';
+   name_bps[strlen(name_bps)-1] = 's';
+   name_ups[strlen(name_ups)-1] = 's';
 
    return true;
 }

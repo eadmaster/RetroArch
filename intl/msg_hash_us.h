@@ -11671,6 +11671,10 @@ MSG_HASH(
    MSG_UNSUPPORTED_VIDEO_MODE,
    "Unsupported video mode"
    )
+MSG_HASH(
+   MSG_PATCH_LOADED,
+   "Patch loaded: %s"
+   )
 
 /* Lakka */
 
