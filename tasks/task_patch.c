@@ -728,9 +728,9 @@ bool patch_content(
       bool is_ips_pref,
       bool is_bps_pref,
       bool is_ups_pref,
-      const char *name_ips,
-      const char *name_bps,
-      const char *name_ups,
+      char *name_ips,
+      char *name_bps,
+      char *name_ups,
       uint8_t **buf,
       void *data)
 {
@@ -747,14 +747,24 @@ bool patch_content(
             msg_hash_to_str(MSG_SEVERAL_PATCHES_ARE_EXPLICITLY_DEFINED));
       return false;
    }
-
-   if (     !try_ips_patch(allow_ips, name_ips, buf, size)
-         && !try_bps_patch(allow_bps, name_bps, buf, size)
-         && !try_ups_patch(allow_ups, name_ups, buf, size))
+   
+   int i = 1;
+   while (     try_ips_patch(allow_ips, name_ips, buf, size)
+         || try_bps_patch(allow_bps, name_bps, buf, size)
+         || try_ups_patch(allow_ups, name_ups, buf, size))
+   {
+        /* a valid patch file was found, switch to the next patch by changing the last char of the string */
+        i++;
+        name_ips[strlen(name_ips)-1] = '0'+i;
+        name_bps[strlen(name_bps)-1] = '0'+i;
+        name_ups[strlen(name_ups)-1] = '0'+i;
+   }
+   
+   if( i == 1 )
    {
       RARCH_LOG("%s\n",
             msg_hash_to_str(MSG_DID_NOT_FIND_A_VALID_CONTENT_PATCH));
-      return false;
+      return false;       
    }
 
    return true;
