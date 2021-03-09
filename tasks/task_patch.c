@@ -769,7 +769,7 @@ bool patch_content(
       name_ups[strlen(name_ups)-1] = '0'+i;
    }
    
-   if( i == 1 )
+   if( i == 2 )
    {
       RARCH_LOG("%s\n",
             msg_hash_to_str(MSG_DID_NOT_FIND_A_VALID_CONTENT_PATCH));
