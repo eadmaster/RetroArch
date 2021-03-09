@@ -756,7 +756,7 @@ bool patch_content(
       return false;
    }
    
-   for (i = 1; i < 10; i++)
+   for (i = 2; i < 11; i++)
    {
       if ( !try_ips_patch(allow_ips, name_ips, buf, size)
          && !try_bps_patch(allow_bps, name_bps, buf, size)
@@ -764,7 +764,6 @@ bool patch_content(
          break;
       
       /* else a valid patch file was found, switch to the next patch by changing the last char of the name string */
-      i++;
       name_ips[strlen(name_ips)-1] = '0'+i;
       name_bps[strlen(name_bps)-1] = '0'+i;
       name_ups[strlen(name_ups)-1] = '0'+i;
