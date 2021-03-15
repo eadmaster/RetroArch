@@ -813,7 +813,7 @@ bool patch_content(
           *   this with an snprintf() implementation
           *   (which will have significantly higher
           *   performance overheads) */
-         char index_char = '0' + patch_index;
+         char index_char = '2' + patch_index;
 
          name_ips_indexed[name_ips_len] = index_char;
          name_bps_indexed[name_bps_len] = index_char;
@@ -834,11 +834,11 @@ bool patch_content(
      name_ups_indexed[name_ups_len] = '\0';
      while (patch_index < 10)
       {
-         char index_char = '0' + patch_index;
+         char index_char = '2' + patch_index;
 
-         name_ips_indexed[name_ips_len] - 1 = index_char;
-         name_bps_indexed[name_bps_len] - 1 = index_char;
-         name_ups_indexed[name_ups_len] - 1 = index_char;
+         name_ips_indexed[name_ips_len - 1] = index_char;
+         name_bps_indexed[name_bps_len - 1] = index_char;
+         name_ups_indexed[name_ups_len - 1] = index_char;
 
          if (     !try_ips_patch(allow_ips, name_ips_indexed, buf, size)
                && !try_bps_patch(allow_bps, name_bps_indexed, buf, size)
@@ -848,6 +848,30 @@ bool patch_content(
          patch_index++;
       }
       
+     /* try to patch "*.000.ips" */
+     patch_index = 0;
+     name_ips_indexed[name_ips_len+8] = '\0';
+     name_bps_indexed[name_bps_len+8] = '\0';
+     name_ups_indexed[name_ups_len+8] = '\0';
+     strlcpy(name_ips_indexed+name_ips_len, ".000.ips", (strlen(".000.ips")+1) * sizeof(char));
+     strlcpy(name_bps_indexed+name_bps_len, ".000.ips", (strlen(".000.ips")+1) * sizeof(char));
+     strlcpy(name_ups_indexed+name_ups_len, ".000.ips", (strlen(".000.ips")+1) * sizeof(char));
+     while (patch_index < 10)  /* TODO: increase to 999, send a single notification when patching more than 10 */
+      {
+         char index_char = '2' + patch_index;
+
+         name_ips_indexed[name_ips_len + 3]  = index_char;
+         puts(name_ips_indexed);
+         name_bps_indexed[name_bps_len + 3] = index_char;
+         name_ups_indexed[name_ups_len + 3] = index_char;
+
+         if (     !try_ips_patch(allow_ips, name_ips_indexed, buf, size)
+               && !try_bps_patch(allow_bps, name_bps_indexed, buf, size)
+               && !try_ups_patch(allow_ups, name_ups_indexed, buf, size))
+            break;
+
+         patch_index++;
+      }
 
       free(name_ips_indexed);
       free(name_bps_indexed);
