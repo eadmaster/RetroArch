@@ -850,20 +850,19 @@ bool patch_content(
       
      /* try to patch "*.XXX.ips" */
      patch_index = 0;
+     strlcpy(name_ips_indexed+name_ips_len-4, ".000.ips", (strlen(".000.ips")+1) * sizeof(char));
+     strlcpy(name_bps_indexed+name_bps_len-4, ".000.ips", (strlen(".000.ips")+1) * sizeof(char));
+     strlcpy(name_ups_indexed+name_ups_len-4, ".000.ips", (strlen(".000.ips")+1) * sizeof(char));
      name_ips_indexed[name_ips_len+8] = '\0';
      name_bps_indexed[name_bps_len+8] = '\0';
      name_ups_indexed[name_ups_len+8] = '\0';
-     strlcpy(name_ips_indexed+name_ips_len, ".000.ips", (strlen(".000.ips")+1) * sizeof(char));
-     strlcpy(name_bps_indexed+name_bps_len, ".000.ips", (strlen(".000.ips")+1) * sizeof(char));
-     strlcpy(name_ups_indexed+name_ups_len, ".000.ips", (strlen(".000.ips")+1) * sizeof(char));
      while (patch_index < 9)  /* TODO: increase to 999, send a single notification when patching more than 10 */
       {
          char index_char = '1' + patch_index;
 
-         name_ips_indexed[name_ips_len + 3]  = index_char;
-         puts(name_ips_indexed);
-         name_bps_indexed[name_bps_len + 3] = index_char;
-         name_ups_indexed[name_ups_len + 3] = index_char;
+         name_ips_indexed[name_ips_len-1]  = index_char;
+         name_bps_indexed[name_bps_len-1] = index_char;
+         name_ups_indexed[name_ups_len-1] = index_char;
 
          if (     !try_ips_patch(allow_ips, name_ips_indexed, buf, size)
                && !try_bps_patch(allow_bps, name_bps_indexed, buf, size)
