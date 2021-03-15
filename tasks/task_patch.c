@@ -784,7 +784,7 @@ bool patch_content(
       char *name_ups_indexed = (char*)malloc((name_ups_len + 10) * sizeof(char));
       /* First patch already applied -> index
        * for subsequent patches starts at 1 */
-      size_t patch_index     = 1;
+      size_t patch_index     = 0;
 
       name_ips_indexed[0] = '\0';
       name_bps_indexed[0] = '\0';
