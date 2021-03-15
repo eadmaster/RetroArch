@@ -3665,6 +3665,14 @@ MSG_HASH(
    "Display an on-screen message when cheat codes are applied."
    )
 MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_NOTIFICATION_SHOW_PATCH_APPLIED,
+   "Patch Notifications"
+   )
+MSG_HASH(
+   MENU_ENUM_SUBLABEL_NOTIFICATION_SHOW_PATCH_APPLIED,
+   "Display an on-screen message when soft-patching ROMs."
+   )
+MSG_HASH(
    MENU_ENUM_SUBLABEL_NOTIFICATION_SHOW_AUTOCONFIG,
    "Display an on-screen message when connecting/disconnecting input devices."
    )
@@ -10448,6 +10456,10 @@ MSG_HASH(
    "Applying cheat changes."
    )
 MSG_HASH(
+   MSG_APPLYING_PATCH,
+   "Applying patch: %s"
+   )
+MSG_HASH(
    MSG_APPLYING_SHADER,
    "Applying shader"
    )
@@ -11670,10 +11682,6 @@ MSG_HASH(
 MSG_HASH(
    MSG_UNSUPPORTED_VIDEO_MODE,
    "Unsupported video mode"
-   )
-MSG_HASH(
-   MSG_PATCH_LOADED,
-   "Patch loaded: %s"
    )
 
 /* Lakka */

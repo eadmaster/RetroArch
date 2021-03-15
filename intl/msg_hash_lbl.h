@@ -4513,6 +4513,10 @@ MSG_HASH(
    "notification_show_cheats_applied"
    )
 MSG_HASH(
+   MENU_ENUM_LABEL_NOTIFICATION_SHOW_PATCH_APPLIED,
+   "notification_show_patch_applied"
+   )
+MSG_HASH(
    MENU_ENUM_LABEL_NOTIFICATION_SHOW_REMAP_LOAD,
    "notification_show_remap_load"
    )
