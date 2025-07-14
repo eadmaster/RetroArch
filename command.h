@@ -284,6 +284,9 @@ bool command_version(command_t *cmd, const char* arg);
 bool command_get_status(command_t *cmd, const char* arg);
 bool command_get_config_param(command_t *cmd, const char* arg);
 bool command_show_osd_msg(command_t *cmd, const char* arg);
+bool command_clear_osd_msg(command_t *cmd, const char* arg);
+bool command_show_overlay_img(command_t *cmd, const char* arg);
+bool command_clear_overlay_img(command_t *cmd, const char* arg);
 #ifdef HAVE_CHEEVOS
 bool command_read_ram(command_t *cmd, const char *arg);
 bool command_write_ram(command_t *cmd, const char *arg);
@@ -305,7 +308,8 @@ static const struct cmd_action_map action_map[] = {
    { "VERSION",          command_version,          "No argument"},
    { "GET_STATUS",       command_get_status,       "No argument" },
    { "GET_CONFIG_PARAM", command_get_config_param, "<param name>" },
-   { "SHOW_MSG",         command_show_osd_msg,     "No argument" },
+   { "SHOW_MSG",         command_show_osd_msg,     "<text>" },
+   { "CLEAR_MSG",        command_clear_osd_msg,    "No argument" },
 #if defined(HAVE_CHEEVOS)
    /* These functions use achievement addresses and only work if a game with achievements is
     * loaded. READ_CORE_MEMORY and WRITE_CORE_MEMORY are preferred and use system addresses. */
@@ -314,6 +318,8 @@ static const struct cmd_action_map action_map[] = {
 #endif
    { "READ_CORE_MEMORY", command_read_memory,      "<address> <number of bytes>" },
    { "WRITE_CORE_MEMORY",command_write_memory,     "<address> <byte1> <byte2> ..." },
+   { "SHOW_OVERLAY"     ,command_show_overlay_img, "<ai service json> ..." },
+   { "CLEAR_OVERLAY"    ,command_clear_overlay_img,"No argument" },
 };
 
 static const struct cmd_map map[] = {

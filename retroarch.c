@@ -10418,10 +10418,47 @@ bool command_get_status(command_t *cmd, const char* arg)
    return true;
 }
 
+bool command_clear_overlay_img(command_t *cmd, const char* arg) {
+   struct rarch_state *p_rarch = &rarch_st;
+   gfx_widgets_ai_service_overlay_unload(&p_rarch->dispwidget_st);
+   return true;
+}
+
+
+static void handle_translation_cb(
+      retro_task_t *task, void *task_data,
+      void *user_data, const char *error);
+      
+bool command_show_overlay_img(command_t *cmd, const char* arg) {
+   // arg should be a valid json according to AI Service specs https://docs.libretro.com/guides/ai-service/
+   if (!string_is_empty(arg)) {
+      http_transfer_data_t fake_http_res;
+      fake_http_res.data = arg;  // 2FIX: truncated due to small buffer?
+      //puts(arg);
+      fake_http_res.len = strlen(arg);
+      fake_http_res.status = 200;
+      handle_translation_cb(NULL, (void*)&fake_http_res, NULL, NULL);
+   }
+   return true;
+}
+
+
+bool command_clear_osd_msg(command_t *cmd, const char* arg) {
+   struct rarch_state *p_rarch = &rarch_st;
+   RUNLOOP_MSG_QUEUE_LOCK(p_rarch);
+   msg_queue_clear(&p_rarch->runloop_msg_queue);  // 2FIX: not working?
+   RUNLOOP_MSG_QUEUE_UNLOCK(p_rarch);
+   return true;
+}
+
 bool command_show_osd_msg(command_t *cmd, const char* arg)
 {
-    runloop_msg_queue_push(arg, 1, 180, false, NULL,
+   unsigned duration = strlen(arg)*10;  // duration is proportional to text lenght
+   
+   if (!string_is_empty(arg))
+    runloop_msg_queue_push(arg, 1, duration, false, NULL,
           MESSAGE_QUEUE_ICON_DEFAULT, MESSAGE_QUEUE_CATEGORY_INFO);
+
     return true;
 }
 
