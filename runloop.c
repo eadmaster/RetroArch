@@ -168,6 +168,10 @@
 #include "cheevos/cheevos_menu.h"
 #endif
 
+#ifdef HAVE_LUA
+#include "lua_manager.h"
+#endif
+
 #ifdef HAVE_NETWORKING
 #include "network/netplay/netplay.h"
 #include "network/netplay/netplay_private.h"
@@ -7817,6 +7821,9 @@ void core_run(void)
       video_driver_cached_frame();
       return;
    }
+#endif
+#if HAVE_LUA
+   lua_loop();
 #endif
 
    if (early_polling)
