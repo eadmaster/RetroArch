@@ -41,6 +41,11 @@
 #include "gfx/video_driver.h"
 #include "gfx/video_display_server.h"
 
+#ifdef HAVE_CHEEVOS
+#include "cheevos/cheevos.h"
+#endif
+
+
 
 // LUA API based on Bizhawk https://tasvideos.org/Bizhawk/LuaFunctions
 
@@ -69,7 +74,7 @@ static const struct luaL_Reg  consolelib[] = {
 // TODO: currently it is the CRC32, switch to MD5 for compatibiltiy with Bizhawk
 int gameinfo_getromhash(lua_State *L) {
     char reply[40] = {0};
-    snprintf(reply, sizeof(reply), "%X", (unsigned long)content_get_crc());
+    snprintf(reply, sizeof(reply), "%X", content_get_crc());
     lua_pushstring(L, reply);
     return 1;
 }
@@ -125,6 +130,7 @@ static const struct luaL_Reg  emulib[] = {
     { "frameadvance" , emu_frameadvance } ,
     { "framecount" ,  emu_framecount },
     { "getsystemid" ,  emu_getsystemid },
+    // TODO: { "getscreenpixel", emu_getscreenpixel }  // FCEUX-only, sometimes used for scene detection
 	{NULL,NULL}
 };
 
@@ -262,58 +268,53 @@ static const struct luaL_Reg  clientlib [] = {
 };
 
 
-// joypad.get([int? controller = nil])
+// nluatable joypad.get([int? controller = nil])
 // returns a lua table of the controller buttons pressed. If supplied, it will only return a table of buttons for the given controller
 int joypad_get(lua_State *L) {
-    return 0;
-    /* WIP:
+    // TODO: handle "controller" arg
+    
     input_driver_state_t *input_st    = input_state_get_ptr();
-    input_mapper_t * mapper_handle             = &input_st->mapper;
     settings_t *settings = config_get_ptr();
-    const input_device_driver_t *joypad     = input_st->primary_joypad;
-   const input_device_driver_t *sec_joypad = input_st->secondary_joypad;
-   rarch_joypad_info_t joypad_info;
-   joypad_info.joy_idx                          = 0;
-   joypad_info.auto_binds                       = NULL;
-   joypad_info.axis_threshold                   = 0.0f;
-   input_driver_t *current_input           = input_st->current_driver;
-   const retro_keybind_set *binds[MAX_USERS] = {NULL};
-   
-    // Button names for standard RetroPad layout
+    input_bits_t current_bits;
+    input_driver_collect_system_input(input_st, settings, &current_bits);
+
     static const char* button_names[] = {
         "A", "B", "Select", "Start", "Up", "Down", "Left", "Right",
         "L", "R", "X", "Y", "L2", "R2", "L3", "R3"
     };
+    static const int button_codes[] = {
+        RETRO_DEVICE_ID_JOYPAD_A, 
+        RETRO_DEVICE_ID_JOYPAD_B, 
+        RETRO_DEVICE_ID_JOYPAD_SELECT, 
+        RETRO_DEVICE_ID_JOYPAD_START,
+        RETRO_DEVICE_ID_JOYPAD_UP,
+        RETRO_DEVICE_ID_JOYPAD_DOWN,
+        RETRO_DEVICE_ID_JOYPAD_LEFT,
+        RETRO_DEVICE_ID_JOYPAD_RIGHT,
+        RETRO_DEVICE_ID_JOYPAD_L,
+        RETRO_DEVICE_ID_JOYPAD_R,
+        RETRO_DEVICE_ID_JOYPAD_X,
+        RETRO_DEVICE_ID_JOYPAD_Y,
+        RETRO_DEVICE_ID_JOYPAD_L2,
+        RETRO_DEVICE_ID_JOYPAD_R2,
+        RETRO_DEVICE_ID_JOYPAD_L3,
+        RETRO_DEVICE_ID_JOYPAD_R3,
+    };
 
-    lua_newtable(L); // create return table
-
-    unsigned port = 0; // P1
-    unsigned device = RETRO_DEVICE_JOYPAD;
-
-    for (unsigned id = 0; id < 16 ; id++)
+    lua_newtable(L);
+    
+    for (unsigned i = 0; i < 16 ; i++)
     {
-        int pressed = current_input->input_state(
-            input_st->current_data,
-            joypad,
-            sec_joypad,
-            &joypad_info, 
-            (*binds),  // retro_keybind_set
-            0, // keyboard_mapping_blocked
-            port,
-            device,
-            0,
-            id
-        );
+        bool pressed = BIT256_GET(current_bits, button_codes[i]);
 
         char key[16];
-        snprintf(key, sizeof(key), "P1 %s", button_names[id]);
-
+        snprintf(key, sizeof(key), "P1 %s", button_names[i]);
         lua_pushstring(L, key);
         lua_pushstring(L, pressed ? "True" : "False");
         lua_settable(L, -3);
     }
-
-    return 1; // returns the table*/
+    
+    return 1;
 }
 
 static const struct luaL_Reg  joypadlib [] = {
@@ -321,14 +322,38 @@ static const struct luaL_Reg  joypadlib [] = {
 	{NULL,NULL}
 };
 
+// TODO: remove deps
+#ifdef HAVE_CHEEVOS
 
-// memory.readbyte(long addr, [string domain = nil])
+// uint memory.readbyte(long addr, [string domain = nil])
 // gets the value from the given address as an unsigned byte
 int memory_readbyte(lua_State *L) {
-    return 0;
-    /* WIP
     if (lua_gettop(L) < 1)
         return luaL_error(L, "[Lua] memory_readbyte: argument 1 (addr) is required");
+
+
+    // Check if an address was passed
+    if (!lua_isnumber(L, 1))
+    {
+        lua_pushstring(L, "memory_readbyte: missing or invalid address argument");
+        lua_error(L);
+        return 0; // never reached, but good style
+    }
+
+    unsigned int address = (unsigned int)luaL_checkinteger(L, 1);
+
+    const uint8_t *data = rcheevos_patch_address(address);
+    if (data){
+        uint8_t value = *data;
+        lua_pushinteger(L, (int)value);
+        return 1;
+    } else {
+        lua_pushstring(L, "memory_readbyte: address out of bounds or memory unavailable");
+        lua_error(L);
+        return 0;
+    }
+}
+    /* WIP without CHEEVOS
 
     lua_Integer addr = luaL_checkinteger(L, 1);
     if (addr < 0 || addr > UINT32_MAX) 
@@ -372,26 +397,99 @@ int memory_readbyte(lua_State *L) {
    // else
    lua_error(L);
    return 0;
-   **/
-}
-
-
-
-// memory.readbyterange(long addr, int length, [string domain = nil])
+**/
+    
+// nluatable memory.readbyterange(long addr, int length, [string domain = nil])
 // Reads the address range that starts from address, and is length long. Returns a zero-indexed table containing the read values (an array of bytes.)
 int memory_readbyterange(lua_State *L) {
-    lua_newtable(L);
-    // TODO
-    return 1;
+   if (lua_gettop(L) < 2) {
+        luaL_error(L, "memory_readbyte: argument 1 (addr) and 2 (length) are required");
+        return 0;
+    }
+    if (!lua_isnumber(L, 1) || !lua_isnumber(L, 2))
+    {
+        lua_pushstring(L, "memory_readbyte: missing or invalid args");
+        lua_error(L);
+        return 0;
+    }
+    long address = (long)luaL_checkinteger(L, 1);
+    unsigned int length = (unsigned int)luaL_checkinteger(L, 2);
+         
+    uint8_t *data = rcheevos_patch_address(address);
+    if (data){
+        lua_newtable(L);
+        for (unsigned int i = 0; i < length; i++) {
+            lua_pushfstring(L, "%d", i+1 );
+            lua_pushfstring(L, "%d", (int)*(data+i));
+            lua_settable(L, -3);
+        }
+        return 1;
+    } else {
+        lua_pushstring(L, "memory_readbyte: address out of bounds or memory unavailable");
+        lua_error(L);
+        return 0;
+    }
 }
 
+// void memory.writebyte(long addr, uint value, [string domain = nil])
+// Writes the given value to the given address as an unsigned byte
+int memory_writebyte(lua_State *L) {
+   if (lua_gettop(L) < 2) {
+        luaL_error(L, "memory_writebyte: argument 1 (addr) and 2 (value) are required");
+        return 0;
+    }
+    if (!lua_isnumber(L, 1) || !lua_isnumber(L, 2))
+    {
+        lua_pushstring(L, "memory_readbyte: missing or invalid args");
+        lua_error(L);
+        return 0;
+    }
+    long address = (long)luaL_checkinteger(L, 1);
+    unsigned int value = (unsigned int)luaL_checkinteger(L, 2);
+         
+    uint8_t *data = rcheevos_patch_address(address);
+    if (data){
+        
+       if (rcheevos_hardcore_active())
+       {
+          RARCH_LOG("[Lua] Achievements hardcore mode disabled by WRITE_CORE_RAM.\n");
+          rcheevos_pause_hardcore();
+       }
+       *data = (uint8_t)value;
+        return 0;
+    } else {
+        lua_pushstring(L, "memory_readbyte: address out of bounds or memory unavailable");
+        lua_error(L);
+        return 0;
+    }
+}
 
 static const struct luaL_Reg  memorylib [] = {
     { "readbyte" ,  memory_readbyte },
+    { "readbyteunsigned" ,  memory_readbyte },
     { "readbyterange" ,  memory_readbyterange },
+    { "read_bytes_as_array" ,  memory_readbyterange },
+    { "writebyte" ,  memory_writebyte },
 	{NULL,NULL}
 };
 
+#endif
+
+
+// gui.addmessage("test")
+// void gui.addmessage(string message)
+// Adds a message to the OSD's message area
+int gui_addmessage(lua_State *L) {
+    const char *msg = luaL_checkstring(L,1);
+    runloop_msg_queue_push(msg, strlen(msg), 1, 180, false, NULL,
+          MESSAGE_QUEUE_ICON_DEFAULT, MESSAGE_QUEUE_CATEGORY_INFO);
+    return 0; 
+}
+
+static const struct luaL_Reg  guilib[] = {
+    { "addmessage" ,  gui_addmessage },
+	{NULL,NULL}
+};
 
 // TODO: SAFE FUNCTION SANDBOXING
 /*
@@ -438,7 +536,6 @@ int safe_http_get(lua_State *L) {
 */
 
 
-
 lua_State *co = NULL;
 char* lua_file = "";
         
@@ -477,10 +574,12 @@ void lua_init() {
     lua_setglobal(L, "client");
     luaL_newlib(L, joypadlib);
     lua_setglobal(L, "joypad");
+#ifdef HAVE_CHEEVOS
     luaL_newlib(L, memorylib);
     lua_setglobal(L, "memory");
-    //luaL_newlib(L, guilib);
-    //lua_setglobal(L, "gui");
+#endif
+    luaL_newlib(L, guilib);
+    lua_setglobal(L, "gui");
     //TODO: lua_register(L, "savestate", savestatelib);
     //TODO: lua_register(L, "movie", movielib);
     //TODO: lua_register(L, "input", inputlib);
