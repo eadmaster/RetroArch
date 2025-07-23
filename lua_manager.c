@@ -24,6 +24,7 @@
 #include <streams/file_stream.h>
 #include <string/stdstring.h>
 #include <retro_timers.h>
+#include <lrc_hash.h>
 
 #include <lua.h>
 #include <lualib.h>
@@ -71,7 +72,7 @@ static const struct luaL_Reg  consolelib[] = {
 
 // gameinfo.getromhash()
 // returns the hash of the currently loaded rom, if a rom is loaded
-// TODO: currently it is the CRC32, switch to MD5 for compatibiltiy with Bizhawk
+// TODO: currently it is the CRC32, Bizhawk uses MD5 for CD-based systems, SHA1 for ROM-based systems
 int gameinfo_getromhash(lua_State *L) {
     char reply[40] = {0};
     snprintf(reply, sizeof(reply), "%X", content_get_crc());
@@ -98,41 +99,70 @@ static const struct luaL_Reg  gameinfolib[] = {
 	{NULL,NULL}
 };
 
-// emu.frameadvance()
-// Signals to the emulator to resume emulation. Necessary for any lua script while loop or else the emulator will freeze!
-int emu_frameadvance(lua_State *L) {
-	return lua_yield(L, 0);
-}
-
-// emu.framecount()
-// Returns the current frame count
-int emu_framecount(lua_State *L) {
-   video_driver_state_t *video_st = video_state_get_ptr();
-   uint64_t frame_count  = video_st->frame_count;
-   lua_pushinteger(L, (lua_Integer)frame_count);
-   return 1;
-}
-
-// emu.getsystemid()
-// returns (if available) the board name of the loaded ROM
-// TODO: match Bizhaws strings: "pc_engine" -> "PCE", ...
-int emu_getsystemid(lua_State *L) {
-    core_info_t *core_info      = NULL;
-    core_info_get_current_core(&core_info);
-    char* sysid = NULL;
-    if(core_info) sysid = core_info->system_id;
-    lua_pushstring(L, sysid ? sysid : "");
-    return 1;
-}
-
-
-static const struct luaL_Reg  emulib[] = {
-    { "frameadvance" , emu_frameadvance } ,
-    { "framecount" ,  emu_framecount },
-    { "getsystemid" ,  emu_getsystemid },
-    // TODO: { "getscreenpixel", emu_getscreenpixel }  // FCEUX-only, sometimes used for scene detection
+static const struct luaL_Reg  romlib[] = {
+    { "gethash" , gameinfo_getromhash }, 
+    { "getfilename", gameinfo_getromname },
+    //TODO: rom.readbyte(int address)
 	{NULL,NULL}
 };
+
+
+// gui.addmessage("test")
+// void gui.addmessage(string message)
+// Adds a message to the OSD's message area
+int gui_addmessage(lua_State *L) {
+    const char *msg = luaL_checkstring(L,1);
+    runloop_msg_queue_push(msg, strlen(msg), 1, 180, false, NULL,
+          MESSAGE_QUEUE_ICON_DEFAULT, MESSAGE_QUEUE_CATEGORY_INFO);
+    return 0; 
+}
+
+    
+// void gui.drawPixel(int x, int y, [luacolor color = nil], [string surfacename = nil])
+// Draws a single pixel at the given coordinates in the given color. Color is optional (if not specified it will be drawn black)
+// Luacolor must be a 32-bit number in the format 0xAARRGGBB;
+int gui_drawPixel(lua_State *L) {
+   if (lua_gettop(L) < 2)
+        return luaL_error(L, "gui.drawPixel(x, y) requires at least 2 arguments");
+
+    unsigned x = luaL_checkinteger(L, 1);
+    unsigned y = luaL_checkinteger(L, 2);
+
+    uint32_t color = 0xFF000000; // default black, fully opaque
+    if (lua_gettop(L) >= 3 && lua_isnumber(L, 3))
+        color = (uint32_t)luaL_checkinteger(L, 3);
+    
+    /* WIP
+    video_driver_state_t *video_st = video_state_get_ptr();    
+    //uintptr_t frame = video_driver_get_current_framebuffer();
+    const uint32_t *frame = (const uint32_t*)video_st->frame_cache_data;  // remove const
+    //unsigned width  = video_st->frame_cache_width;  // 0?
+    //unsigned height = video_st->frame_cache_height;  // 0?
+    unsigned width  = video_st->width;
+    unsigned height = video_st->height;
+    size_t pitch    = video_st->frame_cache_pitch;
+
+    printf("%u\n", frame);
+    printf("%u %u\n", width, height);
+    
+    // Bounds-check if desired
+    if (!frame || x >= width || y >= height) {
+        return luaL_error(L, "invalid coords or frame buffer");
+    }
+
+    frame[y * width + x] = color;
+    */
+
+    return 0;
+}
+
+ 
+static const struct luaL_Reg  guilib[] = {
+    { "addmessage" ,  gui_addmessage },
+    { "drawPixel" ,  gui_drawPixel },
+	{NULL,NULL}
+};
+
 
 // client.ispaused()
 // Returns true if emulator is paused, otherwise, false
@@ -413,7 +443,8 @@ int memory_readbyterange(lua_State *L) {
         return 0;
     }
     long address = (long)luaL_checkinteger(L, 1);
-    unsigned int length = (unsigned int)luaL_checkinteger(L, 2);
+    unsigned length = (unsigned)luaL_checkinteger(L, 2);
+    // TODO: range check
          
     uint8_t *data = rcheevos_patch_address(address);
     if (data){
@@ -429,6 +460,39 @@ int memory_readbyterange(lua_State *L) {
         lua_error(L);
         return 0;
     }
+}
+
+// string memory.hash_region(long addr, int count, [string domain = nil])
+// Returns a hash as a string of a region of memory, starting from addr, through count bytes. If the domain is unspecified, it uses the current region.
+// Bizhawk currently uses sha256, so we do the same
+// TODO: "domain" arg is ignored
+int memory_hash_region(lua_State *L) {
+   if (lua_gettop(L) < 2) {
+        luaL_error(L, "memory_hash_region: argument 1 (addr) and 2 (length) are required");
+        return 0;
+    }
+    if (!lua_isnumber(L, 1) || !lua_isnumber(L, 2))
+    {
+        lua_pushstring(L, "memory_hash_region: missing or invalid args");
+        lua_error(L);
+        return 0;
+    }
+    long address = (long)luaL_checkinteger(L, 1);
+    unsigned length = (unsigned)luaL_checkinteger(L, 2);
+    // TODO: range check
+         
+    uint8_t *data = rcheevos_patch_address(address);
+    if (!data){
+        lua_pushstring(L, "memory_hash_region: address out of bounds or memory unavailable");
+        lua_error(L);
+        return 0;
+    }
+    // else
+    
+    char out_hash[256] = {0};
+    sha256_hash(out_hash, data, length);
+    lua_pushstring(L, out_hash);
+    return 1;
 }
 
 // void memory.writebyte(long addr, uint value, [string domain = nil])
@@ -469,6 +533,7 @@ static const struct luaL_Reg  memorylib [] = {
     { "readbyteunsigned" ,  memory_readbyte },
     { "readbyterange" ,  memory_readbyterange },
     { "read_bytes_as_array" ,  memory_readbyterange },
+    { "hash_region" ,  memory_hash_region },
     { "writebyte" ,  memory_writebyte },
 	{NULL,NULL}
 };
@@ -476,20 +541,95 @@ static const struct luaL_Reg  memorylib [] = {
 #endif
 
 
-// gui.addmessage("test")
-// void gui.addmessage(string message)
-// Adds a message to the OSD's message area
-int gui_addmessage(lua_State *L) {
-    const char *msg = luaL_checkstring(L,1);
-    runloop_msg_queue_push(msg, strlen(msg), 1, 180, false, NULL,
-          MESSAGE_QUEUE_ICON_DEFAULT, MESSAGE_QUEUE_CATEGORY_INFO);
-    return 0; 
+// emu.frameadvance()
+// Signals to the emulator to resume emulation. Necessary for any lua script while loop or else the emulator will freeze!
+int emu_frameadvance(lua_State *L) {
+	return lua_yield(L, 0);
 }
 
-static const struct luaL_Reg  guilib[] = {
-    { "addmessage" ,  gui_addmessage },
+// emu.framecount()
+// Returns the current frame count
+int emu_framecount(lua_State *L) {
+   video_driver_state_t *video_st = video_state_get_ptr();
+   uint64_t frame_count  = video_st->frame_count;
+   lua_pushinteger(L, (lua_Integer)frame_count);
+   return 1;
+}
+
+// emu.getsystemid()
+// returns (if available) the board name of the loaded ROM
+// TODO: match Bizhaws strings: "pc_engine" -> "PCE", ...
+int emu_getsystemid(lua_State *L) {
+    core_info_t *core_info      = NULL;
+    core_info_get_current_core(&core_info);
+    char* sysid = NULL;
+    if(core_info) sysid = core_info->system_id;
+    lua_pushstring(L, sysid ? sysid : "");
+    return 1;
+}
+
+// emu.getscreenpixel(int x, int y, bool getemuscreen)
+// Returns the separate RGB components of the given screen pixel, and the palette. Can be 0-255 by 0-239, but NTSC only displays 0-255 x 8-231 of it. If getemuscreen is false, this gets background colors from either the screen pixel or the LUA pixels set, but LUA data may not match the information used to put the data to the screen.
+// TODO (currently ignored): If getemuscreen is true, this gets background colors from anything behind an LUA screen element.
+// Usage is local r,g,b,palette = emu.getscreenpixel(5, 5, false) to retrieve the current red/green/blue colors and palette value of the pixel at 5x5.
+// The "palette" value is actually the 32-bit pixel value.
+int emu_getscreenpixel(lua_State *L) {
+    if (lua_gettop(L) < 2)
+        return luaL_error(L, "emu.getscreenpixel(x, y) requires 2 arguments");
+
+    unsigned x = luaL_checkinteger(L, 1);
+    unsigned y = luaL_checkinteger(L, 2);
+
+    video_driver_state_t *video_st = video_state_get_ptr();
+    const void *frame = (const void*)video_st->frame_cache_data;
+    unsigned width  = video_st->frame_cache_width;
+    unsigned height = video_st->frame_cache_height;
+    size_t pitch    = video_st->frame_cache_pitch;
+    
+    // Bounds-check if desired
+    if (!frame || x >= width || y >= height) {
+        lua_pushinteger(L, 0);
+        lua_pushinteger(L, 0);
+        lua_pushinteger(L, 0);
+        lua_pushinteger(L, 0);
+        return 4;
+    }
+
+    // Locate the pixel (assumes 32bpp XRGB8888)
+    uint32_t *pixels = (uint32_t*)frame;
+    unsigned pitch_pixels = pitch / sizeof(uint32_t);
+    uint32_t pixel = pixels[y * pitch_pixels + x];
+
+    // Extract RGB (R = high byte, B = low byte)
+    uint8_t r = (pixel >> 16) & 0xFF;
+    uint8_t g = (pixel >>  8) & 0xFF;
+    uint8_t b = (pixel      ) & 0xFF;
+
+    lua_pushinteger(L, r);
+    lua_pushinteger(L, g);
+    lua_pushinteger(L, b);
+    lua_pushinteger(L, pixel);
+    return 4;
+}
+
+static const struct luaL_Reg  emulib[] = {
+    { "frameadvance" , emu_frameadvance } ,
+    { "framecount" ,  emu_framecount },
+    { "getsystemid" ,  emu_getsystemid },
+    // FCEUX compatible functions  https://fceux.com/web/help/LuaFunctionsList.html
+    { "getscreenpixel", emu_getscreenpixel },  // FCEUX-only, sometimes used for scene detection
+    { "exit" ,  client_exit },  
+    { "paused" ,  client_ispaused },
+    { "pause" ,  client_pause },
+    { "unpause" ,  client_unpause },
+    { "softreset" ,  client_reboot_core },
+    { "message" ,  gui_addmessage },
+    { "print" ,  console_log },
+    // emulating
+    // loadrom
 	{NULL,NULL}
 };
+
 
 // TODO: SAFE FUNCTION SANDBOXING
 /*
@@ -568,6 +708,8 @@ void lua_init() {
     lua_setglobal(L, "console");
     luaL_newlib(L, gameinfolib);
     lua_setglobal(L, "gameinfo");
+    luaL_newlib(L, romlib);
+    lua_setglobal(L, "rom");  // fceux alternative
     luaL_newlib(L, emulib);
     lua_setglobal(L, "emu");
     luaL_newlib(L, clientlib);
@@ -607,21 +749,11 @@ void lua_loop() {
 
     if (!co) lua_init();  // init once
     
-    /*
     int status = lua_status(co);
-    if (status == LUA_OK) {
-        // Coroutine is done (returned normally)
-        //RARCH_ERR("[Lua] Script has finished running\n");
-    } else if (status == LUA_YIELD) {
-        // Coroutine is suspended and can be resumed
-        lua_resume(co, NULL, 0);
-    } else {
-        // An error occurred
-        const char *error_msg = lua_tostring(co, -1);
-        if(error_msg) RARCH_ERR("[Lua] %s\n", error_msg);
-    }*/
+    if(status != LUA_YIELD && status != LUA_OK)
+        return;  // error or nothing to execute
     
-    int status = lua_resume(co, NULL, 0);
+    status = lua_resume(co, NULL, 0);
 
     if (status == LUA_YIELD) {
         // Successfully yielded (from emu.frameadvance)
