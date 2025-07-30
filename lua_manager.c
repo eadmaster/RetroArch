@@ -25,6 +25,7 @@
 #include <string/stdstring.h>
 #include <retro_timers.h>
 #include <lrc_hash.h>
+#include <lrc_hash.h>
 
 #include <lua.h>
 #include <lualib.h>
@@ -41,11 +42,7 @@
 #include "input/input_driver.h"
 #include "gfx/video_driver.h"
 #include "gfx/video_display_server.h"
-
-#ifdef HAVE_CHEEVOS
-#include "cheevos/cheevos.h"
-#endif
-
+#include "gfx/gfx_widgets.h"
 
 
 // LUA API based on Bizhawk https://tasvideos.org/Bizhawk/LuaFunctions
@@ -64,11 +61,6 @@ static const struct luaL_Reg  consolelib[] = {
  	{NULL,NULL}
 };
 
-// gameinfo.getboardtype()
-// returns identifying information about the 'mapper' or similar capability used for this game. empty if no such useful distinction can be drawn
-//int gameinfo_getboardtype(lua_State *L) {
-//    return 1;
-//}
 
 // gameinfo.getromhash()
 // returns the hash of the currently loaded rom, if a rom is loaded
@@ -103,63 +95,6 @@ static const struct luaL_Reg  romlib[] = {
     { "gethash" , gameinfo_getromhash }, 
     { "getfilename", gameinfo_getromname },
     //TODO: rom.readbyte(int address)
-	{NULL,NULL}
-};
-
-
-// gui.addmessage("test")
-// void gui.addmessage(string message)
-// Adds a message to the OSD's message area
-int gui_addmessage(lua_State *L) {
-    const char *msg = luaL_checkstring(L,1);
-    runloop_msg_queue_push(msg, strlen(msg), 1, 180, false, NULL,
-          MESSAGE_QUEUE_ICON_DEFAULT, MESSAGE_QUEUE_CATEGORY_INFO);
-    return 0; 
-}
-
-    
-// void gui.drawPixel(int x, int y, [luacolor color = nil], [string surfacename = nil])
-// Draws a single pixel at the given coordinates in the given color. Color is optional (if not specified it will be drawn black)
-// Luacolor must be a 32-bit number in the format 0xAARRGGBB;
-int gui_drawPixel(lua_State *L) {
-   if (lua_gettop(L) < 2)
-        return luaL_error(L, "gui.drawPixel(x, y) requires at least 2 arguments");
-
-    unsigned x = luaL_checkinteger(L, 1);
-    unsigned y = luaL_checkinteger(L, 2);
-
-    uint32_t color = 0xFF000000; // default black, fully opaque
-    if (lua_gettop(L) >= 3 && lua_isnumber(L, 3))
-        color = (uint32_t)luaL_checkinteger(L, 3);
-    
-    /* WIP
-    video_driver_state_t *video_st = video_state_get_ptr();    
-    //uintptr_t frame = video_driver_get_current_framebuffer();
-    const uint32_t *frame = (const uint32_t*)video_st->frame_cache_data;  // remove const
-    //unsigned width  = video_st->frame_cache_width;  // 0?
-    //unsigned height = video_st->frame_cache_height;  // 0?
-    unsigned width  = video_st->width;
-    unsigned height = video_st->height;
-    size_t pitch    = video_st->frame_cache_pitch;
-
-    printf("%u\n", frame);
-    printf("%u %u\n", width, height);
-    
-    // Bounds-check if desired
-    if (!frame || x >= width || y >= height) {
-        return luaL_error(L, "invalid coords or frame buffer");
-    }
-
-    frame[y * width + x] = color;
-    */
-
-    return 0;
-}
-
- 
-static const struct luaL_Reg  guilib[] = {
-    { "addmessage" ,  gui_addmessage },
-    { "drawPixel" ,  gui_drawPixel },
 	{NULL,NULL}
 };
 
@@ -267,6 +202,14 @@ int client_closerom(lua_State *L) {
     return 0; 
 }
 
+
+// void client.screenshot([string path = nil])
+// TODO: if a parameter is passed it will function as the Screenshot As menu item of EmuHawk, else it will function as the Screenshot menu item
+int client_screenshot(lua_State *L) {
+    command_event(CMD_EVENT_TAKE_SCREENSHOT, NULL);
+    return 0; 
+}
+
 // client.sleep(int millis)
 // sleeps for n milliseconds
 int client_sleep(lua_State *L) {
@@ -291,6 +234,7 @@ static const struct luaL_Reg  clientlib [] = {
     { "exit" , client_exit },
     { "reboot_core" , client_reboot_core },
     { "closerom" , client_closerom },  
+    { "screenshot", client_screenshot },
     { "sleep" , client_sleep },  
     // client.getconfig  // TODO: wrap settings_t *settings           = config_get_ptr();
     // client.openrom(string path)
@@ -352,15 +296,12 @@ static const struct luaL_Reg  joypadlib [] = {
 	{NULL,NULL}
 };
 
-// TODO: remove deps
-#ifdef HAVE_CHEEVOS
 
 // uint memory.readbyte(long addr, [string domain = nil])
 // gets the value from the given address as an unsigned byte
 int memory_readbyte(lua_State *L) {
     if (lua_gettop(L) < 1)
         return luaL_error(L, "[Lua] memory_readbyte: argument 1 (addr) is required");
-
 
     // Check if an address was passed
     if (!lua_isnumber(L, 1))
@@ -370,65 +311,77 @@ int memory_readbyte(lua_State *L) {
         return 0; // never reached, but good style
     }
 
-    unsigned int address = (unsigned int)luaL_checkinteger(L, 1);
+    const unsigned int address = (unsigned int)luaL_checkinteger(L, 1);
+    unsigned int domain = RETRO_MEMORY_SYSTEM_RAM;
 
-    const uint8_t *data = rcheevos_patch_address(address);
-    if (data){
-        uint8_t value = *data;
-        lua_pushinteger(L, (int)value);
-        return 1;
-    } else {
+    if (lua_gettop(L) >= 3 ) {
+            // domain arg passed
+            const char *domain_str = luaL_checkstring(L, 3);
+            if(strlen(domain_str)>=4 && (strncasecmp(domain_str, "vram", 4) == 0)) {
+                // only vram domain is supported by now
+                domain = RETRO_MEMORY_VIDEO_RAM;
+            }
+            // TODO: add more memory domains
+    }
+
+    runloop_state_t *runloop_st = runloop_state_get_ptr();   
+    const uint8_t *data = runloop_st->current_core.retro_get_memory_data(domain);
+    const size_t memsize = runloop_st->current_core.retro_get_memory_size(domain);
+    
+    if(!data || address > memsize){
         lua_pushstring(L, "memory_readbyte: address out of bounds or memory unavailable");
         lua_error(L);
         return 0;
     }
+    // else
+    uint8_t value = *(data+address);
+    lua_pushinteger(L, (int)value);
+    return 1;
 }
-    /* WIP without CHEEVOS
 
-    lua_Integer addr = luaL_checkinteger(L, 1);
-    if (addr < 0 || addr > UINT32_MAX) 
+
+// void memory.writebyte(long addr, uint value, [string domain = nil])
+// Writes the given value to the given address as an unsigned byte
+int memory_writebyte(lua_State *L) {
+   if (lua_gettop(L) < 2) {
+        luaL_error(L, "memory_writebyte: argument 1 (addr) and 2 (value) are required");
+        return 0;
+    }
+    if (!lua_isnumber(L, 1) || !lua_isnumber(L, 2))
     {
-        lua_pushstring(L, "Address out of range");
+        lua_pushstring(L, "memory_readbyte: missing or invalid args");
         lua_error(L);
         return 0;
     }
+    size_t address = (size_t)luaL_checkinteger(L, 1);
+    unsigned int value = (unsigned int)luaL_checkinteger(L, 2);
+    unsigned int domain = RETRO_MEMORY_SYSTEM_RAM;
 
-    uint32_t address = (uint32_t)addr;
-
-    runloop_state_t *runloop_st = runloop_state_get_ptr();
-    const rarch_system_info_t* sys_info= &runloop_st->system;
-    if (!sys_info)
-        return 0;
-
-   if (!sys_info || sys_info->mmaps.num_descriptors == 0) {
-        lua_pushstring(L, "no memory map defined");
-        lua_error(L);
-        return 0;
+    if (lua_gettop(L) >= 3 ) {
+            // domain arg passed
+            const char *domain_str = luaL_checkstring(L, 3);
+            if(strlen(domain_str)>=4 && (strncasecmp(domain_str, "vram", 4) == 0)) {
+                // only vram domain is supported by now
+                domain = RETRO_MEMORY_VIDEO_RAM;
+            }
+            // TODO: add more memory domains
     }
-   else
-   {
-      size_t offset;
-      //const rarch_memory_descriptor_t* desc = command_memory_get_descriptor(&sys_info->mmaps, address, &offset);
-      const rarch_memory_descriptor_t* desc = sys_info->mmaps.descriptors;
-      if (!desc)
-        lua_pushstring(L, "no descriptor for address");
-      else if (!desc->core.ptr)
-         lua_pushstring(L, "no data for descriptor");
-      //else if (for_write && (desc->core.flags & RETRO_MEMDESC_CONST))
-      //   lua_pushstring(L, "descriptor data is readonly");
-      else
-      {
-         unsigned int *max_bytes = (unsigned int)(desc->core.len - offset);
-         uint8_t value =  (uint8_t*)desc->core.ptr + desc->core.offset + offset;
-         lua_pushinteger(L, value);
-         return 1;
-      }
-   }
-   // else
-   lua_error(L);
-   return 0;
-**/
     
+    runloop_state_t *runloop_st = runloop_state_get_ptr();   
+    uint8_t *data = runloop_st->current_core.retro_get_memory_data(domain);
+    const size_t memsize = runloop_st->current_core.retro_get_memory_size(domain);
+    
+    if(!data || address > memsize){
+        lua_pushstring(L, "memory_readbyte: address out of bounds or memory unavailable");
+        lua_error(L);
+        return 0;
+    }
+    // else
+    
+    *(data + address) = (uint8_t)value;
+    return 0;
+}
+
 // nluatable memory.readbyterange(long addr, int length, [string domain = nil])
 // Reads the address range that starts from address, and is length long. Returns a zero-indexed table containing the read values (an array of bytes.)
 int memory_readbyterange(lua_State *L) {
@@ -444,30 +397,43 @@ int memory_readbyterange(lua_State *L) {
     }
     long address = (long)luaL_checkinteger(L, 1);
     unsigned length = (unsigned)luaL_checkinteger(L, 2);
-    // TODO: range check
-         
-    uint8_t *data = rcheevos_patch_address(address);
-    if (data){
-        lua_newtable(L);
-        for (unsigned int i = 0; i < length; i++) {
-            lua_pushfstring(L, "%d", i+1 );
-            lua_pushfstring(L, "%d", (int)*(data+i));
-            lua_settable(L, -3);
-        }
-        return 1;
-    } else {
-        lua_pushstring(L, "memory_readbyte: address out of bounds or memory unavailable");
+    unsigned int domain = RETRO_MEMORY_SYSTEM_RAM;
+
+    if (lua_gettop(L) >= 3 ) {
+            // domain arg passed
+            const char *domain_str = luaL_checkstring(L, 3);
+            if(strlen(domain_str)>=4 && (strncasecmp(domain_str, "vram", 4) == 0)) {
+                // only vram domain is supported by now
+                domain = RETRO_MEMORY_VIDEO_RAM;
+            }
+            // TODO: add more memory domains
+    }
+
+    runloop_state_t *runloop_st = runloop_state_get_ptr();   
+    const uint8_t *data = runloop_st->current_core.retro_get_memory_data(domain);
+    const size_t memsize = runloop_st->current_core.retro_get_memory_size(domain);
+    
+    if (!data || (address+length) > memsize){
+        lua_pushstring(L, "memory_hash_region: address out of bounds or memory unavailable");
         lua_error(L);
         return 0;
     }
+    // else
+    
+    lua_newtable(L);
+    for (unsigned int i = 0; i < length; i++) {
+        lua_pushfstring(L, "%d", i );
+        lua_pushfstring(L, "%d", (uint8_t)*(data+address+i));
+        lua_settable(L, -3);
+    }
+    return 1;
 }
 
 // string memory.hash_region(long addr, int count, [string domain = nil])
 // Returns a hash as a string of a region of memory, starting from addr, through count bytes. If the domain is unspecified, it uses the current region.
 // Bizhawk currently uses sha256, so we do the same
-// TODO: "domain" arg is ignored
 int memory_hash_region(lua_State *L) {
-   if (lua_gettop(L) < 2) {
+    if (lua_gettop(L) < 2) {
         luaL_error(L, "memory_hash_region: argument 1 (addr) and 2 (length) are required");
         return 0;
     }
@@ -477,12 +443,25 @@ int memory_hash_region(lua_State *L) {
         lua_error(L);
         return 0;
     }
-    long address = (long)luaL_checkinteger(L, 1);
+    size_t address = (size_t)luaL_checkinteger(L, 1);
     unsigned length = (unsigned)luaL_checkinteger(L, 2);
-    // TODO: range check
-         
-    uint8_t *data = rcheevos_patch_address(address);
-    if (!data){
+    unsigned int domain = RETRO_MEMORY_SYSTEM_RAM;
+    
+    if (lua_gettop(L) >= 3 ) {
+            // domain arg passed
+            const char *domain_str = luaL_checkstring(L, 3);
+            if(strlen(domain_str)>=4 && (strncasecmp(domain_str, "vram", 4) == 0)) {
+                // only vram domain is supported by now
+                domain = RETRO_MEMORY_VIDEO_RAM;
+            }
+            // TODO: add more memory domains
+    }
+
+    runloop_state_t *runloop_st = runloop_state_get_ptr();   
+    uint8_t *data = runloop_st->current_core.retro_get_memory_data(domain);
+    const size_t memsize = runloop_st->current_core.retro_get_memory_size(domain);
+    
+    if (!data || (address+length) > memsize){
         lua_pushstring(L, "memory_hash_region: address out of bounds or memory unavailable");
         lua_error(L);
         return 0;
@@ -490,55 +469,10 @@ int memory_hash_region(lua_State *L) {
     // else
     
     char out_hash[256] = {0};
-    sha256_hash(out_hash, data, length);
+    sha256_hash(out_hash, data+address, length);
     lua_pushstring(L, out_hash);
     return 1;
 }
-
-// void memory.writebyte(long addr, uint value, [string domain = nil])
-// Writes the given value to the given address as an unsigned byte
-int memory_writebyte(lua_State *L) {
-   if (lua_gettop(L) < 2) {
-        luaL_error(L, "memory_writebyte: argument 1 (addr) and 2 (value) are required");
-        return 0;
-    }
-    if (!lua_isnumber(L, 1) || !lua_isnumber(L, 2))
-    {
-        lua_pushstring(L, "memory_readbyte: missing or invalid args");
-        lua_error(L);
-        return 0;
-    }
-    long address = (long)luaL_checkinteger(L, 1);
-    unsigned int value = (unsigned int)luaL_checkinteger(L, 2);
-         
-    uint8_t *data = rcheevos_patch_address(address);
-    if (data){
-        
-       if (rcheevos_hardcore_active())
-       {
-          RARCH_LOG("[Lua] Achievements hardcore mode disabled by WRITE_CORE_RAM.\n");
-          rcheevos_pause_hardcore();
-       }
-       *data = (uint8_t)value;
-        return 0;
-    } else {
-        lua_pushstring(L, "memory_readbyte: address out of bounds or memory unavailable");
-        lua_error(L);
-        return 0;
-    }
-}
-
-static const struct luaL_Reg  memorylib [] = {
-    { "readbyte" ,  memory_readbyte },
-    { "readbyteunsigned" ,  memory_readbyte },
-    { "readbyterange" ,  memory_readbyterange },
-    { "read_bytes_as_array" ,  memory_readbyterange },
-    { "hash_region" ,  memory_hash_region },
-    { "writebyte" ,  memory_writebyte },
-	{NULL,NULL}
-};
-
-#endif
 
 
 // emu.frameadvance()
@@ -569,8 +503,8 @@ int emu_getsystemid(lua_State *L) {
 }
 
 // emu.getscreenpixel(int x, int y, bool getemuscreen)
-// Returns the separate RGB components of the given screen pixel, and the palette. Can be 0-255 by 0-239, but NTSC only displays 0-255 x 8-231 of it. If getemuscreen is false, this gets background colors from either the screen pixel or the LUA pixels set, but LUA data may not match the information used to put the data to the screen.
-// TODO (currently ignored): If getemuscreen is true, this gets background colors from anything behind an LUA screen element.
+// Returns the separate RGB components of the given screen pixel, and the palette. Can be 0-255 by 0-239, but NTSC only displays 0-255 x 8-231 of it.
+// TODO (currently ignored): If getemuscreen is false, this gets background colors from either the screen pixel or the LUA pixels set, but LUA data may not match the information used to put the data to the screen. If getemuscreen is true, this gets background colors from anything behind an LUA screen element.
 // Usage is local r,g,b,palette = emu.getscreenpixel(5, 5, false) to retrieve the current red/green/blue colors and palette value of the pixel at 5x5.
 // The "palette" value is actually the 32-bit pixel value.
 int emu_getscreenpixel(lua_State *L) {
@@ -612,6 +546,162 @@ int emu_getscreenpixel(lua_State *L) {
     return 4;
 }
 
+
+// void gui.addmessage(string message)
+// Adds a message to the OSD's message area
+int gui_addmessage(lua_State *L) {
+    const char *msg = luaL_checkstring(L,1);
+    runloop_msg_queue_push(msg, strlen(msg), 1, 180, false, NULL,
+          MESSAGE_QUEUE_ICON_DEFAULT, MESSAGE_QUEUE_CATEGORY_INFO);
+    return 0; 
+}
+
+
+#ifdef HAVE_GFX_WIDGETS
+// void gui.drawString(int x, int y, string message, [luacolor forecolor = nil], [luacolor backcolor = nil], [int? fontsize = nil], [string fontfamily = nil], [string fontstyle = nil], [string horizalign = nil], [string vertalign = nil], [string surfacename = nil])
+// Draws the given message in the emulator screen space (like all draw functions) at the given x,y coordinates and the given color. The default color is white. A fontfamily can be specified and is monospace generic if none is specified (font family options are the same as the .NET FontFamily class). The fontsize default is 12. The default font style is regular. Font style options are regular, bold, italic, strikethrough, underline. Horizontal alignment options are left (default), center, or right. Vertical alignment options are bottom (default), middle, or top. Alignment options specify which ends of the text will be drawn at the x and y coordinates. For pixel-perfect font look, make sure to disable aspect ratio correction.
+int gui_drawString(lua_State *L) {
+   if (lua_gettop(L) < 3)
+        return luaL_error(L, "gui.drawString(x, y, message) requires at least 3 arguments");
+
+    unsigned x = luaL_checkinteger(L, 1);
+    unsigned y = luaL_checkinteger(L, 2);
+    const char *msg = luaL_checkstring(L, 3);
+
+    uint32_t color = 0xFF000000; // default black, fully opaque
+    if (lua_gettop(L) >= 4 && lua_isnumber(L, 4))
+        color = (uint32_t)luaL_checkinteger(L, 4);
+    
+    dispgfx_widget_t *p_dispwidget = dispwidget_get_ptr();
+    gfx_widget_font_data_t *font  = &p_dispwidget->gfx_widget_fonts.regular;
+   
+    bool widgets_active            = p_dispwidget->active;
+    // TODO :Check if active
+
+   //video_driver_state_t *video_st = video_state_get_ptr();     
+   //unsigned video_width          = video_st->current_video.width;
+   unsigned video_width             = p_dispwidget->last_video_width;
+   unsigned video_height            = p_dispwidget->last_video_height;
+   
+   /*
+    unsigned height       = p_dispwidget->simple_widget_height;
+      size_t _len = strlcpy(txt, msg_hash_to_str(msg), sizeof(txt));
+
+      width = font_driver_get_message_width(
+            p_dispwidget->gfx_widget_fonts.regular.font,
+            txt, _len, 1.0f)
+         + p_dispwidget->simple_widget_padding * 2;
+    */
+      
+      gfx_widgets_draw_text(
+         font,
+         msg,
+         x, y,
+         video_width, video_height,
+         color,
+         TEXT_ALIGN_LEFT,
+         true);
+         
+    /*
+   gfx_widgets_flush_text(video_width, video_height, &p_dispwidget->gfx_widget_fonts.regular);
+
+    void *userdata = video_driver_display_userdata_get();
+    gfx_display_t *p_disp  = disp_get_ptr();
+    gfx_display_ctx_driver_t* dispctx    = p_disp->dispctx;
+     if (dispctx && dispctx->scissor_end)
+        dispctx->scissor_end(userdata, video_width, video_height);
+    */
+    
+    return 0;
+}
+
+// void gui.drawPixel(int x, int y, [luacolor color = nil], [string surfacename = nil])
+// Draws a single pixel at the given coordinates in the given color. Color is optional (if not specified it will be drawn black)
+// Luacolor must be a 32-bit number in the format 0xAARRGGBB;
+int gui_drawPixel(lua_State *L) {
+   if (lua_gettop(L) < 2)
+        return luaL_error(L, "gui.drawPixel(x, y) requires at least 2 arguments");
+
+    unsigned x = luaL_checkinteger(L, 1);
+    unsigned y = luaL_checkinteger(L, 2);
+
+    uint32_t color = 0xFF000000; // default black, fully opaque
+    if (lua_gettop(L) >= 3 && lua_isnumber(L, 3))
+        color = (uint32_t)luaL_checkinteger(L, 3);
+
+    /* WIP
+    video_driver_state_t *video_st = video_state_get_ptr();    
+    //uintptr_t frame = video_driver_get_current_framebuffer();
+    uint32_t *frame = (uint32_t*)video_st->frame_cache_data;  // remove const
+    unsigned width  = video_st->frame_cache_width;  // 0?
+    unsigned height = video_st->frame_cache_height;  // 0?
+    size_t pitch    = video_st->frame_cache_pitch;
+
+    printf("%u\n", frame);
+    printf("%u %u\n", width, height);
+    
+    // Bounds-check if desired
+    if (!frame || x >= width || y >= height) {
+        return luaL_error(L, "invalid coords or frame buffer");
+    }
+
+    frame[y * width + x] = color;
+    */
+    
+    
+    dispgfx_widget_t *p_dispwidget = dispwidget_get_ptr();
+    gfx_widget_font_data_t *font  = &p_dispwidget->gfx_widget_fonts.regular;
+   
+    bool widgets_active            = p_dispwidget->active;
+    // TODO :Check if active
+    
+    //unsigned width  = video_st->frame_cache_width;
+    //unsigned width  = video_st->width;
+    //unsigned height = video_st->frame_cache_height;
+    //unsigned height = video_st->height;
+   
+   //video_driver_state_t *video_st = video_state_get_ptr();     
+   //unsigned video_width          = video_st->current_video.width;
+   unsigned video_width             = p_dispwidget->last_video_width;
+   unsigned video_height            = p_dispwidget->last_video_height;
+   video_driver_get_size(&video_width, &video_height);
+   void *userdata                   = video_driver_get_ptr();
+   gfx_display_t *p_disp      = disp_get_ptr();
+      
+      gfx_display_draw_quad(
+            p_disp,
+            userdata,
+            video_width, video_height,
+            x, y,
+            1, 1,
+            video_width, video_height,
+            p_dispwidget->backdrop_orig,
+            NULL
+      );
+    return 0;
+}
+#endif
+
+
+static const struct luaL_Reg  guilib[] = {
+    { "addmessage" ,  gui_addmessage },
+#ifdef HAVE_GFX_WIDGETS
+    { "drawPixel" ,  gui_drawPixel },
+    { "drawString" ,  gui_drawString },
+    { "drawText" ,  gui_drawString },
+    //TODO: drawLine
+    //TODO: drawImage
+    //TODO: drawRectangle
+    //TODO: drawBox
+#endif
+    // FCEUX-aliases
+    { "getpixel", emu_getscreenpixel },
+    { "setpixel", gui_drawPixel },
+    //TODO: gui.parsecolor(color)
+    { "savescreenshot", client_screenshot },
+	{NULL,NULL}
+};
+
 static const struct luaL_Reg  emulib[] = {
     { "frameadvance" , emu_frameadvance } ,
     { "framecount" ,  emu_framecount },
@@ -631,76 +721,122 @@ static const struct luaL_Reg  emulib[] = {
 };
 
 
-// TODO: SAFE FUNCTION SANDBOXING
-/*
+static const struct luaL_Reg  memorylib [] = {
+    { "readbyte" ,  memory_readbyte },
+    { "read_u8" ,  memory_readbyte },
+    //TODO: { "read_s8" ,  memory_readbytesigned },
+    //TODO: { "read_s16_be" ,  memory_read_s16_be },
+    //TODO: { "read_s16_le" ,  memory_read_s16_le },
+    //TODO: { "read_u16_be" ,  memory_read_u16_be },
+    //TODO: { "read_u16_le" ,  memory_read_u16_le },
+    { "readbyterange" ,  memory_readbyterange },
+    { "read_bytes_as_array" ,  memory_readbyterange },
+    { "hash_region" ,  memory_hash_region },
+    { "writebyte" ,  memory_writebyte },
+    //TODO: { "write_bytes_as_array" ,  memory_write_bytes_as_array },
+    //TODO: { "write_bytes_as_dict" ,  memory_write_bytes_as_dict },
+    // FCEUX-aliases
+    { "readbyteunsigned" ,  memory_readbyte },
+    //TODO: { "readbytesigned" ,  memory_readbytesigned },
+    //TODO: { "readwordsigned" ,  memory_read_s16_le },
+    //TODO: { "readword" ,  memory_read_u16_le },
+    //TODO: { "readfloat" ,  memory_readfloat },
+    //TODO: { "writebyterange" ,  memory_writebyterange },
+	{NULL,NULL}
+};
+
+
+// stdlib function sandboxing
 int safe_io_open(lua_State *L) {
     if (lua_gettop(L) < 1)
         return luaL_error(L, "[Lua] open: argument 1 (addr) is required");
 
-    const char *relpath = luaL_checkstring(L, 1);
-
+    const char *user_path = luaL_checkstring(L, 1);
     const char *mode = luaL_optstring(L, 2, "r");
 
-    char full_input_path[PATH_MAX];
-    char resolved_path[PATH_MAX];
-
-    snprintf(full_input_path, sizeof(full_input_path), "%s%s", CONTENT_DIR, relpath);
-
-    if (!realpath(full_input_path, resolved_path)) {
-        return luaL_error(L, "Invalid or inaccessible file");
+    if (path_is_absolute(user_path)) {
+        return luaL_error(L, "Access denied: file path is absolute, must be relative");
+    }
+    
+    // Retrieve original io.open from registry
+    lua_getfield(L, LUA_REGISTRYINDEX, "original_io_open");
+    if (!lua_isfunction(L, -1)) {
+        return luaL_error(L, "Original io.open not found");
     }
 
-    if (strncmp(resolved_path, CONTENT_DIR, strlen(CONTENT_DIR)) != 0) {
-        return luaL_error(L, "Access denied");
-    }
+    // Push arguments for original io.open
+    lua_pushstring(L, user_path);
+    lua_pushstring(L, mode);
 
-    FILE *fp = fopen(resolved_path, mode);
-    if (!fp)
-        return luaL_error(L, "Could not open file");
+    // Call original io.open(path, mode)
+    lua_call(L, 2, 1);
 
-    lua_pushlightuserdata(L, fp);  // you can return a real Lua file object instead
     return 1;
 }
-
-int safe_http_get(lua_State *L) {
-    const char *url = luaL_checkstring(L, 1);
-    if (!strstr(url, "https://api.yoursite.com/")) {
-        return luaL_error(L, "URL not allowed");
-    }
-
-    // Do the HTTP request using your own HTTP client (e.g., curl)
-    // Push result to Lua (response body)
-    lua_pushstring(L, "<response>..."); // Replace with actual response
-    return 1;
-}
-*/
 
 
 lua_State *co = NULL;
 char* lua_file = "";
         
 void lua_init() {
+
+    // build current script name
+    char *lua_file = strdup(path_get(RARCH_PATH_BASENAME));
+    if (!lua_file) return;
+    lua_file = realloc(lua_file, strlen(lua_file) + strlen(".lua") + 1);
+    if (!lua_file) return;
+    strcat(lua_file, ".lua");
+    
+    if (!path_is_valid(lua_file)) {
+        RARCH_LOG("[Lua] %s not found\n", lua_file);
+        free(lua_file);
+        // try a global alternative
+        settings_t *settings            = config_get_ptr();
+        lua_file = strdup(settings->paths.directory_system);
+        if (!lua_file) return;
+        lua_file = realloc(lua_file, strlen(lua_file) + strlen("/autostart.lua") + 1);
+        if (!lua_file) return;
+        strcat(lua_file, "/autostart.lua");
+        
+        if (!path_is_valid(lua_file)) {
+            RARCH_LOG("[Lua] %s not found\n", lua_file);
+            free(lua_file);
+            return;
+        }
+    }
+    
     lua_State *L = luaL_newstate();
     lua_getglobal(L, "init");
     
-    luaL_openlibs(L);   // Load full stdlib
+    // Load full stdlib
+    luaL_openlibs(L);
+    
+    // override unsafe functions
+    // io.open
+    lua_getglobal(L, "io");
+    lua_getfield(L, -1, "open");       // push io.open
+    lua_setfield(L, LUA_REGISTRYINDEX, "original_io_open"); // registry["original_io_open"] = io.open
+    lua_pop(L, 1);                     // pop io table
+    lua_getglobal(L, "io");            // push io table
+    lua_pushstring(L, "open");         // push key "open"
+    lua_pushcfunction(L, safe_io_open); // push our safe_io_open function
+    lua_settable(L, -3);               // io.open = safe_io_open
+    lua_pop(L, 1);                    // pop io table
     
     // disable unsafe functions
-    /*
     lua_getglobal(L, "os");
     if (lua_istable(L, -1)) {
         lua_pushstring(L, "execute");
-        lua_pushcfunction(L, disabled_func); // or lua_pushnil(L);
+        lua_pushnil(L);
         lua_settable(L, -3);
     }
-    lua_pop(L, 1); // pop os
+    lua_pop(L, 1);
 
     // Disable risky loaders
     lua_pushnil(L); lua_setglobal(L, "dofile");
     lua_pushnil(L); lua_setglobal(L, "loadfile");
     lua_pushnil(L); lua_setglobal(L, "require");
     lua_pushnil(L); lua_setglobal(L, "load");  // disables eval-like dynamic code
-    */
     
     // register custom C functions
     // MEMO: luaL_register is deprecated as of Lua 5.2 and later. It still exists in Lua 5.1.
@@ -716,25 +852,16 @@ void lua_init() {
     lua_setglobal(L, "client");
     luaL_newlib(L, joypadlib);
     lua_setglobal(L, "joypad");
-#ifdef HAVE_CHEEVOS
     luaL_newlib(L, memorylib);
     lua_setglobal(L, "memory");
-#endif
     luaL_newlib(L, guilib);
     lua_setglobal(L, "gui");
     //TODO: lua_register(L, "savestate", savestatelib);
     //TODO: lua_register(L, "movie", movielib);
     //TODO: lua_register(L, "input", inputlib);
-    //TODO: lua_register(L, "comm", commlib); // http requests
+    //TODO: lua_register(L, "comm", commlib); // http requests, using task_push_http_post_transfer(...
     lua_settop(L, 0); // clean the stack, because each call to lua_register leaves a table on top
 
-    // build current script name
-    char *lua_file = strdup(path_get(RARCH_PATH_BASENAME));
-    if (!lua_file) return;
-    lua_file = realloc(lua_file, strlen(lua_file) + strlen(".lua") + 1);
-    if (!lua_file) return;
-    strcat(lua_file, ".lua");
-    
     // Create a coroutine (needed to yield)
     co = lua_newthread(L);
 
@@ -743,11 +870,13 @@ void lua_init() {
 
     free(lua_file);
 }
-    
+
+
 void lua_loop() {
     //RARCH_LOG("[Lua] main loop\n");
 
-    if (!co) lua_init();  // init once
+    //if (!co) lua_init();  // lazy-init
+    if (!co) return;  // init failed (no script file found)
     
     int status = lua_status(co);
     if(status != LUA_YIELD && status != LUA_OK)
@@ -766,7 +895,9 @@ void lua_loop() {
     }
 } 
 
+
 void lua_deinit() {
+    if (!co) return;  // init failed (no script file found)
     lua_close(co);
     co = NULL;
 }

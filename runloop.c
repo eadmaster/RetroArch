@@ -7690,6 +7690,9 @@ bool core_load_game(retro_ctx_load_content_info_t *load_info)
       /* load models */
       game_ai_load(load_info->info->path, runloop_st->current_core.retro_get_memory_data(RETRO_MEMORY_SYSTEM_RAM), runloop_st->current_core.retro_get_memory_size(RETRO_MEMORY_SYSTEM_RAM), libretro_log_cb);
 #endif
+#ifdef HAVE_LUA
+   lua_init();
+#endif
       return true;
    }
 
@@ -7717,6 +7720,9 @@ bool core_unserialize(retro_ctx_serialize_info_t *info)
 #endif
 #if HAVE_RUNAHEAD
    command_event(CMD_EVENT_PREEMPT_RESET_BUFFER, NULL);
+#endif
+#ifdef HAVE_LUA
+   lua_deinit();
 #endif
 
    return true;
@@ -7822,7 +7828,7 @@ void core_run(void)
       return;
    }
 #endif
-#if HAVE_LUA
+#ifdef HAVE_LUA
    lua_loop();
 #endif
 

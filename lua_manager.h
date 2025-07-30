@@ -18,6 +18,8 @@
 
 #include <retro_common_api.h>
 
+void lua_init();
+
 void lua_loop(); 
 
 void lua_deinit(); 
