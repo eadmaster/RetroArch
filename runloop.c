@@ -7828,16 +7828,16 @@ void core_run(void)
       return;
    }
 #endif
-#ifdef HAVE_LUA
-   lua_loop();
-#endif
-
    if (early_polling)
       input_driver_poll();
    else if (late_polling)
       current_core->flags &= ~RETRO_CORE_FLAG_INPUT_POLLED;
 
    current_core->retro_run();
+
+#ifdef HAVE_LUA
+   lua_loop();
+#endif
 
 #ifdef HAVE_GAME_AI
    {
