@@ -24,4 +24,6 @@ void lua_loop();
 
 void lua_deinit(); 
 
+void lua_draw_gfxs_loop();
+
 #endif

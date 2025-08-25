@@ -638,22 +638,29 @@ int gui_addmessage(lua_State *L) {
     return 0; 
 }
 
+#ifdef HAVE_GFX_WIDGETS
+// WIP:
+unsigned gui_drawString_x;
+unsigned gui_drawString_y;
+char *gui_drawString_msg = NULL;
+uint32_t gui_drawString_color = 0x000000FF; // default black, fully opaque
+uint32_t gui_drawString_bg_color = 0xFFFFFFFF; // default white, fully opaque  (alpha is the last byte)
+
 void draw_strings_loop() {
 
-    unsigned x = 10;
-    unsigned y = 10;
-    const char *msg = "hello world!";
+    if(!gui_drawString_msg) return;
 
-    uint32_t color = 0xFF000000; // default black, fully opaque
-    
-    uint32_t bg_color = 0xFFFFFFFF; // default white, fully opaque
+    // TODO: iterate and read from a container
+    unsigned x = gui_drawString_x;
+    unsigned y = gui_drawString_y;
+    const char *msg = gui_drawString_msg;
+    uint32_t color = gui_drawString_color;
+    uint32_t bg_color = gui_drawString_bg_color;
         
     dispgfx_widget_t *p_dispwidget = dispwidget_get_ptr();
-    
-    char font_path[PATH_MAX_LENGTH];
-        
     void *font  = &p_dispwidget->gfx_widget_fonts.regular.font;
-    
+    if (!font) puts("empty font data");
+
     //bool widgets_active            = p_dispwidget->active;
     // TODO :Check if active
 
@@ -663,7 +670,7 @@ void draw_strings_loop() {
    unsigned video_width             = p_dispwidget->last_video_width;
    unsigned video_height            = p_dispwidget->last_video_height;
    unsigned font_scale            = 1;
-   unsigned font_size            = 12;
+   unsigned font_size            = 24;  // TODO: read from the caller
    
    /*
     unsigned height       = p_dispwidget->simple_widget_height;
@@ -674,14 +681,11 @@ void draw_strings_loop() {
             txt, _len, 1.0f)
          + p_dispwidget->simple_widget_padding * 2;
     */
-    if (!font) puts("empty font data");
 
-    //RARCH_LOG("%d %d\n", video_width, video_height);
-    //RARCH_LOG("%d %d\n", x, y);
+
     video_driver_state_t *video_st = video_state_get_ptr();
     /*
     struct font_params params;
-   
    
    params.x           = x / video_width;
    params.y           = 1.0f - y / video_height;
@@ -701,7 +705,6 @@ void draw_strings_loop() {
       params.drop_alpha  = GFX_SHADOW_ALPHA;
    }
 
-
 video_frame_info_t video;
 video_driver_build_info(&video);
  gfx_display_t *p_disp      = (gfx_display_t*)video.disp_userdata;
@@ -709,41 +712,37 @@ video_driver_build_info(&video);
    void *userdata             = video.userdata;
     */
   //gfx_display_set_alpha(p_widget->backdrop_orig, DEFAULT_BACKDROP);
-  /*
+  
+   void *userdata                   = video_driver_get_ptr();
+   //void *userdata = VIDEO_DRIVER_GET_PTR_INTERNAL(video_st);
+   gfx_display_t *p_disp      = disp_get_ptr();
+   
+   float quad_color[4] = {0.0f, 1.0f, 0.0f, 1.0f};  // RGBA
+
    gfx_display_draw_quad(
-         p_disp, userdata,
-         video.width, video.height,
+         p_disp,
+         userdata,
+         video_width, video_height,
          x, y,
-         10, 10,
-         video.width, video.height,
-         bg_color,
-         NULL);
-    */   
-         /*
-      gfx_widgets_draw_text(
-         font,
-         msg,
-         x, y,
-         video.width, video.height,
-         0xFFFFFFFF,
-         TEXT_ALIGN_CENTER,
-         true);
-      */
-    gfx_display_t *p_disp      = disp_get_ptr();
-      
+         100, 100,
+         video_width, video_height,
+         quad_color,
+         NULL);   
+
    font_data_impl_t font_data;
    font_data.line_height        = (int)(font_size + 0.5f);
    font_data.glyph_width        = (int)((font_size * (3.0f / 4.0f)) + 0.5f);
 
-   /* Create font */
+   // Load a custom font -- TODO: only if specified
+   /*
+   char font_path[PATH_MAX_LENGTH];
    if (!(font_data.font = gfx_display_font_file(p_disp, "Vera.ttf", font_size, false))) {
       puts("cannot load font");
       return;
-  }
-
-   /* Get font metadata */
+   }*/
+   // Get font metadata
    //if ((glyph_width = font_driver_get_message_width(font_data->font, "a", 1, 1.0f)) > 0)
-   
+
     gfx_display_draw_text(
         font_data.font,
         msg,
@@ -752,32 +751,23 @@ video_driver_build_info(&video);
         color,
         TEXT_ALIGN_LEFT,
         1.0f, false, 0.0f, true);
-   
-      //font_flush(video_width, video_height, &font_data);
-    /*
-   gfx_widgets_flush_text(video_width, video_height, &p_dispwidget->gfx_widget_fonts.regular);
 
-    void *userdata = video_driver_display_userdata_get();
-    gfx_display_t *p_disp  = disp_get_ptr();
-    gfx_display_ctx_driver_t* dispctx    = p_disp->dispctx;
-     if (dispctx && dispctx->scissor_end)
-        dispctx->scissor_end(userdata, video_width, video_height);
-    */
-    
-    /*
-   if (video_st->current_video && video_st->current_video->set_viewport)
-      video_st->current_video->set_viewport(
-            video_st->data, video_width, video_height, false, true);
-    */
+    /* ALT:
+      gfx_widgets_draw_text(
+         font,
+         msg,
+         x, y,
+         video_width, video_height,
+         0xFFFFFFFF,
+         TEXT_ALIGN_LEFT,
+         true);
+        */
 }
 
-void draw_gfxs_loop() {
+void lua_draw_gfxs_loop() {
     draw_strings_loop();
 }
 
-
-
-#ifdef HAVE_GFX_WIDGETS
 // void gui.drawString(int x, int y, string message, [luacolor forecolor = nil], [luacolor backcolor = nil], [int? fontsize = nil], [string fontfamily = nil], [string fontstyle = nil], [string horizalign = nil], [string vertalign = nil], [string surfacename = nil])
 // Draws the given message in the emulator screen space (like all draw functions) at the given x,y coordinates and the given color. The default color is white. A fontfamily can be specified and is monospace generic if none is specified (font family options are the same as the .NET FontFamily class). The fontsize default is 12. The default font style is regular. Font style options are regular, bold, italic, strikethrough, underline. Horizontal alignment options are left (default), center, or right. Vertical alignment options are bottom (default), middle, or top. Alignment options specify which ends of the text will be drawn at the x and y coordinates. For pixel-perfect font look, make sure to disable aspect ratio correction.
 int gui_drawString(lua_State *L) {
@@ -791,16 +781,22 @@ int gui_drawString(lua_State *L) {
     unsigned y = luaL_checkinteger(L, 2);
     const char *msg = luaL_checkstring(L, 3);
 
-    uint32_t color = 0xFF000000; // default black, fully opaque
+    uint32_t color = 0xFFFFFFFF; // default white, fully opaque
     if (lua_gettop(L) >= 4 && lua_isnumber(L, 4))
         color = (uint32_t)luaL_checkinteger(L, 4);
     
-    uint32_t bg_color = 0xFFFFFFFF; // default white, fully opaque
+    uint32_t bg_color = 0x000000FF; // default black, fully opaque
     //uint32_t bg_color = p_widget->backdrop_orig;
     if (lua_gettop(L) >= 5 && lua_isnumber(L, 5))
         bg_color = (uint32_t)luaL_checkinteger(L, 5);
     
-    // TODO: cache the new shape
+    // TODO: use a container for multiple shapes
+    gui_drawString_x = x;
+    gui_drawString_y = y;
+    if(gui_drawString_msg) free(gui_drawString_msg);
+    gui_drawString_msg = strdup(msg);
+    gui_drawString_color = color;
+    gui_drawString_bg_color = bg_color;
     
     return 0;
 }
@@ -841,7 +837,6 @@ int gui_drawPixel(lua_State *L) {
     frame[y * width + x] = color;
     */
     
-    
     dispgfx_widget_t *p_dispwidget = dispwidget_get_ptr();
     gfx_widget_font_data_t *font  = &p_dispwidget->gfx_widget_fonts.regular;
    
@@ -866,7 +861,7 @@ int gui_drawPixel(lua_State *L) {
             userdata,
             video_width, video_height,
             x, y,
-            1, 1,
+            100, 100,
             video_width, video_height,
             p_dispwidget->backdrop_orig,
             NULL
@@ -1130,7 +1125,11 @@ void lua_loop() {
     int status = lua_status(co);
     if(status != LUA_YIELD && status != LUA_OK)
         return;  // error or nothing to execute
-    
+
+    // maybe needed on mac?
+    //int nres;
+    //status = lua_resume(co, NULL, 0, &nres);
+    //#else
     status = lua_resume(co, NULL, 0);
 
     if (status == LUA_YIELD) {
@@ -1142,8 +1141,6 @@ void lua_loop() {
         const char *error_msg = lua_tostring(co, -1);
         if(error_msg) RARCH_ERR("[Lua] %s\n", error_msg);
     }
-    
-    draw_gfxs_loop();
 } 
 
 

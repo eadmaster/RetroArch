@@ -38,6 +38,7 @@
 #include "../configuration.h"
 #include "../file_path_special.h"
 #include "../msg_hash.h"
+#include "../lua_manager.h"
 
 #include "../tasks/task_content.h"
 #include "../tasks/tasks_internal.h"
@@ -1830,6 +1831,9 @@ void gfx_widgets_frame(void *data)
       slock_unlock(p_dispwidget->current_msgs_lock);
 #endif
    }
+#ifdef HAVE_LUA
+   lua_draw_gfxs_loop();
+#endif
 
    /* Ensure all text is flushed */
    gfx_widgets_flush_text(video_width, video_height,
