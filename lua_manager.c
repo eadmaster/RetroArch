@@ -40,9 +40,11 @@
 #include "version.h"
 #include "command.h"
 #include "input/input_driver.h"
+#include "input/input_keymaps.h"
 #include "gfx/video_driver.h"
 #include "gfx/video_display_server.h"
 #include "gfx/gfx_widgets.h"
+#include "tasks/tasks_internal.h"
 
 
 // LUA API based on Bizhawk https://tasvideos.org/Bizhawk/LuaFunctions
@@ -65,6 +67,7 @@ static const struct luaL_Reg  consolelib[] = {
 // gameinfo.getromhash()
 // returns the hash of the currently loaded rom, if a rom is loaded
 // TODO: currently it is the CRC32, Bizhawk uses MD5 for CD-based systems, SHA1 for ROM-based systems
+// TODO: fceux allows passing "string type" arg like "md5"
 int gameinfo_getromhash(lua_State *L) {
     char reply[40] = {0};
     snprintf(reply, sizeof(reply), "%X", content_get_crc());
@@ -310,11 +313,56 @@ int joypad_get(lua_State *L) {
     return 1;
 }
 
+// nluatable input.get()
+// Returns a dict-like table of key/button names (of host). Only pressed buttons will appear (with a value of true); unpressed buttons are omitted. I
+int input_get(lua_State *L) {
+   lua_newtable(L);
+
+    input_driver_state_t *input_st    = input_state_get_ptr();
+    settings_t *settings = config_get_ptr();
+    //input_bits_t current_bits;
+    //input_driver_collect_system_input(input_st, settings, &current_bits);
+    input_driver_t *current_input           = input_st->current_driver;
+    
+    char curr_keyname[64] = {0};
+
+   // Keyboard scan
+   for (unsigned key = 0; key < RETROK_LAST; key++)
+   {
+      input_keymaps_translate_rk_to_str(key, curr_keyname, 64);
+  
+     bool curr_pressed = current_input->input_state(
+              input_st->current_data,
+              0,
+              0,
+              0,
+              0,
+              0,
+              0,
+              RETRO_DEVICE_KEYBOARD, 0, key);
+              
+      if (*curr_keyname && curr_pressed )
+      {
+          // key is pressed
+         lua_pushboolean(L, 1);  // true
+         lua_setfield(L, -2, curr_keyname);
+      }
+   }
+   return 1;
+}
+
+
 static const struct luaL_Reg  joypadlib [] = {
     { "get" ,  joypad_get },
+    { "read" ,  joypad_get },
 	{NULL,NULL}
 };
 
+static const struct luaL_Reg  inputlib [] = {
+    { "get" ,  input_get },
+    { "read" ,  input_get },
+	{NULL,NULL}
+};
 
 bool using_hw_framebuffer() {
     video_driver_state_t *video_st = video_state_get_ptr();  
@@ -539,8 +587,36 @@ int emu_getsystemid(lua_State *L) {
     core_info_t *core_info      = NULL;
     core_info_get_current_core(&core_info);
     char* sysid = NULL;
-    if(core_info) sysid = core_info->system_id;
+    sysid = core_info->system_id;
+    if(sysid) {
+        // try to match Bizhawk names
+        if (strncmp(sysid, "super_nes", strlen(sysid)) == 0) sysid = "SNES" ;
+        if (strncmp(sysid, "mega_drive", strlen(sysid)) == 0) sysid = "GEN" ;
+        if (strncmp(sysid, "master_system", strlen(sysid)) == 0) sysid = "SMS" ;
+        if (strncmp(sysid, "game_boy", strlen(sysid)) == 0) sysid = "GB" ;
+        if (strncmp(sysid, "game_boy_advance", strlen(sysid)) == 0) sysid = "GBA" ;
+        if (strncmp(sysid, "pc_engine", strlen(sysid)) == 0) sysid = "PCE" ;
+        if (strncmp(sysid, "sega_saturn", strlen(sysid)) == 0) sysid = "SAT" ;
+        if (strncmp(sysid, "playstation", strlen(sysid)) == 0) sysid = "PSX" ;
+        if (strncmp(sysid, "commodore_64", strlen(sysid)) == 0) sysid = "C64" ;
+        if (strncmp(sysid, "nintendo_64", strlen(sysid)) == 0) sysid = "N64" ;
+        if (strncmp(sysid, "virtual_boy", strlen(sysid)) == 0) sysid = "VB" ;
+        if (strncmp(sysid, "wonderswan", strlen(sysid)) == 0) sysid = "WSWAN" ;
+        if (strncmp(sysid, "neo_geo_pocket", strlen(sysid)) == 0) sysid = "NGP" ;
+    }
     lua_pushstring(L, sysid ? sysid : "");
+    return 1;
+}
+
+// emu.getdir()
+// Returns the path of retroarch.exe as a string.
+int emu_getdir(lua_State *L) {
+    settings_t *settings            = config_get_ptr();
+    //const char* r = strdup(settings->paths.directory_system);  // /system
+    //const char* r = path_get(RARCH_PATH_CONFIG);  // /system
+    char app_path[PATH_MAX_LENGTH]         = {0};
+    fill_pathname_application_dir(app_path, sizeof(app_path));  // main exe    
+    lua_pushstring(L, strdup(app_path));
     return 1;
 }
 
@@ -821,6 +897,40 @@ int gui_drawPixel(lua_State *L) {
 }
 #endif
 
+// string comm.httpGet(string url)
+// makes a HTTP GET request
+int comm_httpget(lua_State *L) {
+//TODO: lua_register(L, "", ); // http requests, using task_push_http_post_transfer(...
+    const char *url = luaL_checkstring(L,1);  
+    void* t = task_push_http_transfer(url, true, "GET", NULL, NULL);
+    if(!t) return luaL_error(L, "cannot send HTTP request");
+    lua_pushstring(L, "OK");  // TODO: return body to the caller?   
+    return 1;
+}
+
+// string comm.httpPost(string url, string payload)
+// makes a HTTP POST request
+int comm_httppost(lua_State *L) {
+    const char *url = luaL_checkstring(L,1);  
+    const char *payload = luaL_checkstring(L,2);
+    void* t = task_push_http_post_transfer(url, payload, true, "POST", NULL, NULL);
+    if(!t) return luaL_error(L, "cannot send HTTP request");
+    lua_pushstring(L, "OK");  // TODO: return body to the caller?   
+    return 1;
+}
+
+// string comm.httpPost(string url, string payload)
+// makes a HTTP PUT request
+int comm_httpput(lua_State *L) {
+    const char *url = luaL_checkstring(L,1);  
+    const char *payload = luaL_checkstring(L,2);
+    void* t = task_push_http_post_transfer(url, payload, true, "PUT", NULL, NULL);
+    if(!t) return luaL_error(L, "cannot send HTTP request");
+    lua_pushstring(L, "OK");  // TODO: return body to the caller?   
+    return 1;
+}
+
+
 
 static const struct luaL_Reg  guilib[] = {
     { "addmessage" ,  gui_addmessage },
@@ -857,9 +967,9 @@ static const struct luaL_Reg  emulib[] = {
     { "message" ,  gui_addmessage },
     { "print" ,  console_log },
     { "emulating", client_emulating },
+    { "getdir", emu_getdir },
     // TODO: "poweron"
     // TODO: "loadrom"
-    // TODO: "getdir"  // Returns the path of retroarch.exe as a string
 	{NULL,NULL}
 };
 
@@ -893,6 +1003,14 @@ static const struct luaL_Reg  memorylib [] = {
 };
 
 
+static const struct luaL_Reg  commlib[] = {
+    { "httpGet", comm_httpget },
+    { "httpPost", comm_httppost },
+    { "httpPut", comm_httppost },
+    // TODO: more functions
+	{NULL,NULL}
+};
+
 // stdlib function sandboxing
 int safe_io_open(lua_State *L) {
     if (lua_gettop(L) < 1)
@@ -901,9 +1019,12 @@ int safe_io_open(lua_State *L) {
     const char *user_path = luaL_checkstring(L, 1);
     const char *mode = luaL_optstring(L, 2, "r");
 
+    /* TOO RESTRICTIVE:
     if (path_is_absolute(user_path)) {
         return luaL_error(L, "Access denied: file path is absolute, must be relative");
-    }
+    }*/
+    // TODO: allow subdirs of
+    //const char* r = path_get(RARCH_PATH_CONFIG);  // /system
     
     // Retrieve original io.open from registry
     lua_getfield(L, LUA_REGISTRYINDEX, "original_io_open");
@@ -960,6 +1081,7 @@ void lua_init() {
     
     // override unsafe functions
     // io.open
+    /*
     lua_getglobal(L, "io");
     lua_getfield(L, -1, "open");       // push io.open
     lua_setfield(L, LUA_REGISTRYINDEX, "original_io_open"); // registry["original_io_open"] = io.open
@@ -969,6 +1091,7 @@ void lua_init() {
     lua_pushcfunction(L, safe_io_open); // push our safe_io_open function
     lua_settable(L, -3);               // io.open = safe_io_open
     lua_pop(L, 1);                    // pop io table
+    */
     
     // disable unsafe functions
     lua_getglobal(L, "os");
@@ -1000,14 +1123,16 @@ void lua_init() {
     lua_setglobal(L, "client");
     luaL_newlib(L, joypadlib);
     lua_setglobal(L, "joypad");
+    luaL_newlib(L, inputlib);
+    lua_setglobal(L, "input");
     luaL_newlib(L, memorylib);
     lua_setglobal(L, "memory");
     luaL_newlib(L, guilib);
     lua_setglobal(L, "gui");
+    luaL_newlib(L, commlib);
+    lua_setglobal(L, "comm");
     //TODO: lua_register(L, "savestate", savestatelib);
-    //TODO: lua_register(L, "movie", movielib);
-    //TODO: lua_register(L, "input", inputlib);
-    //TODO: lua_register(L, "comm", commlib); // http requests, using task_push_http_post_transfer(...
+    //TODO: lua_register(L, "movie", movielib);    
     lua_settop(L, 0); // clean the stack, because each call to lua_register leaves a table on top
 
     // Create a coroutine (needed to yield)
