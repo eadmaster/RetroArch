@@ -7279,6 +7279,10 @@ end:
       runloop_st->frame_limit_last_time = end_frame_time;
    }
 
+#ifdef HAVE_LUA
+   lua_loop();
+#endif
+
    /* Frame delay */
    if (     !(input_st->flags & INP_FLAG_NONBLOCKING)
          || (runloop_st->flags & RUNLOOP_FLAG_FASTMOTION))
@@ -7834,10 +7838,6 @@ void core_run(void)
       current_core->flags &= ~RETRO_CORE_FLAG_INPUT_POLLED;
 
    current_core->retro_run();
-
-#ifdef HAVE_LUA
-   lua_loop();
-#endif
 
 #ifdef HAVE_GAME_AI
    {

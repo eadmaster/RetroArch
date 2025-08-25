@@ -375,21 +375,18 @@ bool using_hw_framebuffer() {
 
 size_t get_memory_address_arg(lua_State *L, const int BYTES_TO_READ, const unsigned int domain) {
     if (lua_gettop(L) < 1)
-        return -1;
+        return luaL_error(L, "missing address");
         
     if (!lua_isnumber(L, 1))
-        return -1;
+        return luaL_error(L, "invalid address");
     
     const unsigned int address = (unsigned int)luaL_checkinteger(L, 1);
     
     // check if the address is valid for the current core
     runloop_state_t *runloop_st = runloop_state_get_ptr(); 
     const size_t memsize = runloop_st->current_core.retro_get_memory_size(domain);
-    if((address + BYTES_TO_READ - 1) > memsize){
-        // address out of bounds
-        return -1;
-    }
-    
+    if((address + BYTES_TO_READ - 1) > memsize)
+        return luaL_error(L, "address out of bounds");
     // else 
     return address;
 }
@@ -401,30 +398,23 @@ unsigned int get_memory_domain_arg(lua_State *L, const int DOMAIN_ARG_POS) {
     if (lua_gettop(L) >= DOMAIN_ARG_POS ) {  // 3 for write functions, 2 for read functions
             // domain arg passed
             const char *domain_str = luaL_checkstring(L, DOMAIN_ARG_POS);
-            if(strlen(domain_str)>=4 && (strncasecmp(domain_str, "vram", 4) == 0)) {
+            if(strcasestr(domain_str, "vram") != NULL) {  // case-insensitive substring check
                 // only vram domain is supported by now
                 domain = RETRO_MEMORY_VIDEO_RAM;
             }
             // TODO: add more memory domains
     }
-    //if(domain == RETRO_MEMORY_VIDEO_RAM && using_hw_framebuffer()) {
-    // err?
-    //}
+    if(domain == RETRO_MEMORY_VIDEO_RAM && using_hw_framebuffer()) {
+        return luaL_error(L, "cannot access hardware framebuffer");
+    }
     return domain;
 }
 
 int get_memory_value(lua_State *L, const int BYTES_TO_READ, bool with_sign, bool big_endian) {
     const unsigned int domain = get_memory_domain_arg(L, 2);
-    const size_t address = get_memory_address_arg(L, BYTES_TO_READ, domain);
-    if(address == -1)
-    {
-        lua_pushstring(L, "missing or invalid address argument");
-        lua_error(L);
-        return 0; // never reached, but good style
-    }
-    
+    const size_t address = get_memory_address_arg(L, BYTES_TO_READ, domain);    
     const uint8_t *data = (const uint8_t *) runloop_state_get_ptr()->current_core.retro_get_memory_data(domain);
-    if(!data) return 0; // TODO: error
+    if (!data) return luaL_error(L, "unable to access memory");
     
     int value;
     
@@ -479,21 +469,11 @@ int memory_read_s16_be(lua_State *L) {
 int memory_writebyte(lua_State *L) {
     const unsigned int domain = get_memory_domain_arg(L, 3);
     const size_t address = get_memory_address_arg(L, 1, domain);
-    if(address == -1)
-    {
-        lua_pushstring(L, "missing or invalid address argument");
-        lua_error(L);
-        return 0; // never reached, but good style
-    }
     
     unsigned int value = (unsigned int)luaL_checkinteger(L, 2);
 
     uint8_t *data = runloop_state_get_ptr()->current_core.retro_get_memory_data(domain);  
-    if(!data){
-        lua_pushstring(L, "memory_writebyte: address out of bounds or memory unavailable");
-        lua_error(L);
-        return 0;
-    }
+    if (!data) return luaL_error(L, "unable to access memory");
     // else
     
     *(data + address) = (uint8_t)value;
@@ -503,25 +483,14 @@ int memory_writebyte(lua_State *L) {
 // nluatable memory.readbyterange(long addr, int length, [string domain = nil])
 // Reads the address range that starts from address, and is length long. Returns a zero-indexed table containing the read values (an array of bytes.)
 int memory_readbyterange(lua_State *L) {
-    if (lua_gettop(L) < 2 || !lua_isnumber(L, 2) ) {
-        luaL_error(L, "memory.readbyterange: argument 1 (addr) and 2 (length) are required");
-        return 0;
-    }
+    if (lua_gettop(L) < 2 || !lua_isnumber(L, 2) )
+        return luaL_error(L, "memory.readbyterange: argument 1 (addr) and 2 (length) are required");
     
     const unsigned int domain = get_memory_domain_arg(L, 3);
     unsigned length = (unsigned)luaL_checkinteger(L, 2);
-    const size_t address = get_memory_address_arg(L, length, domain);
-    if(address == -1)
-    {
-        lua_pushstring(L, "missing or invalid address argument");
-        lua_error(L);
-        return 0; // never reached, but good style
-    }
-      
+    const size_t address = get_memory_address_arg(L, length, domain);      
     const uint8_t *data = runloop_state_get_ptr()->current_core.retro_get_memory_data(domain);  
-    if (!data){
-        return 0;
-    }
+    if (!data) return luaL_error(L, "unable to access memory");
     // else
     
     lua_newtable(L);
@@ -537,25 +506,15 @@ int memory_readbyterange(lua_State *L) {
 // Returns a hash as a string of a region of memory, starting from addr, through count bytes. If the domain is unspecified, it uses the current region.
 // Bizhawk currently uses sha256, so we do the same
 int memory_hash_region(lua_State *L) {
-    if (lua_gettop(L) < 2 || !lua_isnumber(L, 2) ) {
-        luaL_error(L, "memory.hash_region: argument 1 (addr) and 2 (length) are required");
-        return 0;
-    }
+    if (lua_gettop(L) < 2 || !lua_isnumber(L, 2) )
+        return luaL_error(L, "memory.hash_region: argument 1 (addr) and 2 (length) are required");
     
     const unsigned int domain = get_memory_domain_arg(L, 3);
     unsigned length = (unsigned)luaL_checkinteger(L, 2);
     const size_t address = get_memory_address_arg(L, length, domain);
-    if(address == -1)
-    {
-        lua_pushstring(L, "missing or invalid address argument");
-        lua_error(L);
-        return 0; // never reached, but good style
-    }
       
     const uint8_t *data = runloop_state_get_ptr()->current_core.retro_get_memory_data(domain);  
-    if (!data){
-        return 0;
-    }
+    if (!data) return luaL_error(L, "unable to access memory");
     // else
     
     char out_hash[256] = {0};
@@ -679,38 +638,23 @@ int gui_addmessage(lua_State *L) {
     return 0; 
 }
 
+void draw_strings_loop() {
 
-#ifdef HAVE_GFX_WIDGETS
-// void gui.drawString(int x, int y, string message, [luacolor forecolor = nil], [luacolor backcolor = nil], [int? fontsize = nil], [string fontfamily = nil], [string fontstyle = nil], [string horizalign = nil], [string vertalign = nil], [string surfacename = nil])
-// Draws the given message in the emulator screen space (like all draw functions) at the given x,y coordinates and the given color. The default color is white. A fontfamily can be specified and is monospace generic if none is specified (font family options are the same as the .NET FontFamily class). The fontsize default is 12. The default font style is regular. Font style options are regular, bold, italic, strikethrough, underline. Horizontal alignment options are left (default), center, or right. Vertical alignment options are bottom (default), middle, or top. Alignment options specify which ends of the text will be drawn at the x and y coordinates. For pixel-perfect font look, make sure to disable aspect ratio correction.
-int gui_drawString(lua_State *L) {
-   if (lua_gettop(L) < 3)
-        return luaL_error(L, "gui.drawString(x, y, message) requires at least 3 arguments");
-
-    if(using_hw_framebuffer()) 
-        return luaL_error(L, "cannot draw on hardware framebuffer");
-        
-    unsigned x = luaL_checkinteger(L, 1);
-    unsigned y = luaL_checkinteger(L, 2);
-    const char *msg = luaL_checkstring(L, 3);
+    unsigned x = 10;
+    unsigned y = 10;
+    const char *msg = "hello world!";
 
     uint32_t color = 0xFF000000; // default black, fully opaque
-    if (lua_gettop(L) >= 4 && lua_isnumber(L, 4))
-        color = (uint32_t)luaL_checkinteger(L, 4);
     
     uint32_t bg_color = 0xFFFFFFFF; // default white, fully opaque
-    //uint32_t bg_color = p_widget->backdrop_orig;
-    if (lua_gettop(L) >= 5 && lua_isnumber(L, 5))
-        bg_color = (uint32_t)luaL_checkinteger(L, 5);
-    
+        
     dispgfx_widget_t *p_dispwidget = dispwidget_get_ptr();
     
     char font_path[PATH_MAX_LENGTH];
-    
-    
+        
     void *font  = &p_dispwidget->gfx_widget_fonts.regular.font;
     
-    bool widgets_active            = p_dispwidget->active;
+    //bool widgets_active            = p_dispwidget->active;
     // TODO :Check if active
 
    //video_driver_state_t *video_st = video_state_get_ptr();     
@@ -732,8 +676,8 @@ int gui_drawString(lua_State *L) {
     */
     if (!font) puts("empty font data");
 
-    RARCH_LOG("%d %d\n", video_width, video_height);
-    RARCH_LOG("%d %d\n", x, y);
+    //RARCH_LOG("%d %d\n", video_width, video_height);
+    //RARCH_LOG("%d %d\n", x, y);
     video_driver_state_t *video_st = video_state_get_ptr();
     /*
     struct font_params params;
@@ -785,31 +729,31 @@ video_driver_build_info(&video);
          TEXT_ALIGN_CENTER,
          true);
       */
-      gfx_display_t *p_disp      = disp_get_ptr();
+    gfx_display_t *p_disp      = disp_get_ptr();
       
-      font_data_impl_t font_data;
-font_data.line_height        = (int)(font_size + 0.5f);
+   font_data_impl_t font_data;
+   font_data.line_height        = (int)(font_size + 0.5f);
    font_data.glyph_width        = (int)((font_size * (3.0f / 4.0f)) + 0.5f);
 
    /* Create font */
    if (!(font_data.font = gfx_display_font_file(p_disp, "Vera.ttf", font_size, false))) {
       puts("cannot load font");
-      return 0;
+      return;
   }
 
    /* Get font metadata */
    //if ((glyph_width = font_driver_get_message_width(font_data->font, "a", 1, 1.0f)) > 0)
    
-        gfx_display_draw_text(
-            font_data.font,
-            msg,
-         x, y,
-         video_width, video_height,
-         color,
-         TEXT_ALIGN_LEFT,
-         1.0f, false, 0.0f, true);
+    gfx_display_draw_text(
+        font_data.font,
+        msg,
+        x, y,
+        video_width, video_height,
+        color,
+        TEXT_ALIGN_LEFT,
+        1.0f, false, 0.0f, true);
    
-      font_flush(video_width, video_height, &font_data);
+      //font_flush(video_width, video_height, &font_data);
     /*
    gfx_widgets_flush_text(video_width, video_height, &p_dispwidget->gfx_widget_fonts.regular);
 
@@ -820,9 +764,43 @@ font_data.line_height        = (int)(font_size + 0.5f);
         dispctx->scissor_end(userdata, video_width, video_height);
     */
     
+    /*
    if (video_st->current_video && video_st->current_video->set_viewport)
       video_st->current_video->set_viewport(
             video_st->data, video_width, video_height, false, true);
+    */
+}
+
+void draw_gfxs_loop() {
+    draw_strings_loop();
+}
+
+
+
+#ifdef HAVE_GFX_WIDGETS
+// void gui.drawString(int x, int y, string message, [luacolor forecolor = nil], [luacolor backcolor = nil], [int? fontsize = nil], [string fontfamily = nil], [string fontstyle = nil], [string horizalign = nil], [string vertalign = nil], [string surfacename = nil])
+// Draws the given message in the emulator screen space (like all draw functions) at the given x,y coordinates and the given color. The default color is white. A fontfamily can be specified and is monospace generic if none is specified (font family options are the same as the .NET FontFamily class). The fontsize default is 12. The default font style is regular. Font style options are regular, bold, italic, strikethrough, underline. Horizontal alignment options are left (default), center, or right. Vertical alignment options are bottom (default), middle, or top. Alignment options specify which ends of the text will be drawn at the x and y coordinates. For pixel-perfect font look, make sure to disable aspect ratio correction.
+int gui_drawString(lua_State *L) {
+   if (lua_gettop(L) < 3)
+        return luaL_error(L, "gui.drawString(x, y, message) requires at least 3 arguments");
+
+    if(using_hw_framebuffer()) 
+        return luaL_error(L, "cannot draw on hardware framebuffer");
+        
+    unsigned x = luaL_checkinteger(L, 1);
+    unsigned y = luaL_checkinteger(L, 2);
+    const char *msg = luaL_checkstring(L, 3);
+
+    uint32_t color = 0xFF000000; // default black, fully opaque
+    if (lua_gettop(L) >= 4 && lua_isnumber(L, 4))
+        color = (uint32_t)luaL_checkinteger(L, 4);
+    
+    uint32_t bg_color = 0xFFFFFFFF; // default white, fully opaque
+    //uint32_t bg_color = p_widget->backdrop_orig;
+    if (lua_gettop(L) >= 5 && lua_isnumber(L, 5))
+        bg_color = (uint32_t)luaL_checkinteger(L, 5);
+    
+    // TODO: cache the new shape
     
     return 0;
 }
@@ -900,7 +878,6 @@ int gui_drawPixel(lua_State *L) {
 // string comm.httpGet(string url)
 // makes a HTTP GET request
 int comm_httpget(lua_State *L) {
-//TODO: lua_register(L, "", ); // http requests, using task_push_http_post_transfer(...
     const char *url = luaL_checkstring(L,1);  
     void* t = task_push_http_transfer(url, true, "GET", NULL, NULL);
     if(!t) return luaL_error(L, "cannot send HTTP request");
@@ -929,7 +906,6 @@ int comm_httpput(lua_State *L) {
     lua_pushstring(L, "OK");  // TODO: return body to the caller?   
     return 1;
 }
-
 
 
 static const struct luaL_Reg  guilib[] = {
@@ -1006,7 +982,7 @@ static const struct luaL_Reg  memorylib [] = {
 static const struct luaL_Reg  commlib[] = {
     { "httpGet", comm_httpget },
     { "httpPost", comm_httppost },
-    { "httpPut", comm_httppost },
+    { "httpPut", comm_httpput },
     // TODO: more functions
 	{NULL,NULL}
 };
@@ -1166,6 +1142,8 @@ void lua_loop() {
         const char *error_msg = lua_tostring(co, -1);
         if(error_msg) RARCH_ERR("[Lua] %s\n", error_msg);
     }
+    
+    draw_gfxs_loop();
 } 
 
 
