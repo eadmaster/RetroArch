@@ -639,25 +639,54 @@ int gui_addmessage(lua_State *L) {
     return 0; 
 }
 
+
 #ifdef HAVE_GFX_WIDGETS
-// WIP:
-unsigned gui_drawString_x;
-unsigned gui_drawString_y;
-char *gui_drawString_msg = NULL;
-uint32_t gui_drawString_color = 0x000000FF; // default black, fully opaque
-uint32_t gui_drawString_bg_color = 0xFFFFFFFF; // default white, fully opaque  (alpha is the last byte)
 
-void draw_strings_loop() {
+enum gui_shape_type
+{
+   SHAPE_UNUSED = 0,
+   SHAPE_TEXT,
+   SHAPE_PIXELTEXT,
+   SHAPE_RECT
+   // TODO: line, circle, image, etc.
+};
 
-    if(!gui_drawString_msg) return;
+typedef struct gui_shape
+{
+    enum gui_shape_type type;
+    unsigned x;
+    unsigned y;
+    uint32_t color;
+    uint32_t bg_color;
+    unsigned width;
+    unsigned height;
+    char *text;
+    unsigned font_size;
+    char * font_face;
+} gui_shape_t;
 
-    // TODO: iterate and read from a container
-    unsigned x = gui_drawString_x;
-    unsigned y = gui_drawString_y;
-    const char *msg = gui_drawString_msg;
-    uint32_t color = gui_drawString_color;
-    uint32_t bg_color = gui_drawString_bg_color;
-        
+gui_shape_t gui_shapes[50] = {0};  // static memory buffer of shapes currently onscreen
+
+const int GUI_SHAPES_BUF_SIZE = (sizeof(gui_shapes) / sizeof(gui_shapes[0]));
+int gui_shapes_curr_index = 0;
+
+
+// void gui.clearGraphics([string surfacename = nil])
+// clears all lua drawn graphics from the screen
+int gui_clearGraphics(lua_State *L) {
+    for(int i=0; i<GUI_SHAPES_BUF_SIZE; i++)
+        gui_shapes[i].type = SHAPE_UNUSED;  // set as unused
+    return 0; 
+}
+
+
+void lua_draw_gfxs_loop() {
+    // disable drawing when inside the menu
+#ifdef HAVE_MENU
+      bool menu_open = menu_state_get_ptr()->flags & MENU_ST_FLAG_ALIVE;
+      if (menu_open) return;
+#endif
+
     dispgfx_widget_t *p_dispwidget = dispwidget_get_ptr();
     void *font  = &p_dispwidget->gfx_widget_fonts.regular.font;
     if (!font) puts("empty font data");
@@ -671,139 +700,255 @@ void draw_strings_loop() {
    unsigned video_width             = p_dispwidget->last_video_width;
    unsigned video_height            = p_dispwidget->last_video_height;
    unsigned font_scale            = 1;
-   unsigned font_size            = 24;  // TODO: read from the caller
+   unsigned font_size            = 12; 
    
-   /*
-    unsigned height       = p_dispwidget->simple_widget_height;
-      size_t _len = strlcpy(txt, msg_hash_to_str(msg), sizeof(txt));
-
-      width = font_driver_get_message_width(
-            p_dispwidget->gfx_widget_fonts.regular.font,
-            txt, _len, 1.0f)
-         + p_dispwidget->simple_widget_padding * 2;
-    */
-
-
     video_driver_state_t *video_st = video_state_get_ptr();
-    /*
-    struct font_params params;
-   
-   params.x           = x / video_width;
-   params.y           = 1.0f - y / video_height;
-   params.scale       = font_scale;
-   params.drop_mod    = 0.0f;
-   params.drop_x      = 0.0f;
-   params.drop_y      = 0.0f;
-   params.color       = color;
-   params.full_screen = true;
-   params.text_align  = TEXT_ALIGN_CENTER;
-*/
-  /*
-   if (shadows_enable)
-   {
-      params.drop_x      = shadow_offset;
-      params.drop_y      = -shadow_offset;
-      params.drop_alpha  = GFX_SHADOW_ALPHA;
-   }
 
-video_frame_info_t video;
-video_driver_build_info(&video);
- gfx_display_t *p_disp      = (gfx_display_t*)video.disp_userdata;
-   dispgfx_widget_t *p_widget = (dispgfx_widget_t*)video.widgets_userdata;
-   void *userdata             = video.userdata;
-    */
-  //gfx_display_set_alpha(p_widget->backdrop_orig, DEFAULT_BACKDROP);
-  
    void *userdata                   = video_driver_get_ptr();
    //void *userdata = VIDEO_DRIVER_GET_PTR_INTERNAL(video_st);
    gfx_display_t *p_disp      = disp_get_ptr();
    
-   float quad_color[16]              = COLOR_HEX_TO_FLOAT(0x000000, 1.0f);  // RGB, alpha
-
-   gfx_display_draw_quad(
-         p_disp,
-         userdata,
-         video_width, video_height,
-         x, y,
-         100, 100,
-         video_width, video_height,
-         quad_color,
-         NULL);   
-
    font_data_impl_t font_data;
-   font_data.line_height        = (int)(font_size + 0.5f);
-   font_data.glyph_width        = (int)((font_size * (3.0f / 4.0f)) + 0.5f);
 
-   // Load a custom font -- TODO: only if specified
-   /*
-   char font_path[PATH_MAX_LENGTH];
-   if (!(font_data.font = gfx_display_font_file(p_disp, "Vera.ttf", font_size, false))) {
-      puts("cannot load font");
-      return;
-   }*/
-   // Get font metadata
-   //if ((glyph_width = font_driver_get_message_width(font_data->font, "a", 1, 1.0f)) > 0)
+    for(int i=0; i<GUI_SHAPES_BUF_SIZE; i++) {
+        
+        gui_shape_t* curr_shape = &gui_shapes[i];
 
-    gfx_display_draw_text(
-        font_data.font,
-        msg,
-        x, y,
-        video_width, video_height,
-        color,
-        TEXT_ALIGN_LEFT,
-        1.0f, false, 0.0f, true);
+        switch (curr_shape->type)
+        {
+            case SHAPE_UNUSED:
+            {
+                continue;
+            }
+            
+            case SHAPE_TEXT:
+            {
+                if(*curr_shape->text == 0) // empty string
+                    continue;
 
-    /* ALT:
-      gfx_widgets_draw_text(
-         font,
-         msg,
-         x, y,
-         video_width, video_height,
-         0xFFFFFFFF,
-         TEXT_ALIGN_LEFT,
-         true);
-        */
+                // adjust font size
+                font_size = curr_shape->font_size;
+                font_data.line_height        = (int)(font_size + 0.5f);
+                font_data.glyph_width        = (int)((font_size * (3.0f / 4.0f)) + 0.5f);
+                                
+                // Load a custom font -- TODO: only if specified
+                /*
+                char font_path[PATH_MAX_LENGTH];
+                if (!(font_data.font = gfx_display_font_file(p_disp, "Vera.ttf", font_size, false))) {
+                  puts("cannot load font");
+                  return;
+                }*/
+                // Get font metadata
+                //if ((glyph_width = font_driver_get_message_width(font_data->font, "a", 1, 1.0f)) > 0)
+
+               
+                gfx_display_draw_text(
+                    font_data.font,
+                    curr_shape->text,
+                    curr_shape->x, curr_shape->y,
+                    video_width, video_height,
+                    curr_shape->color,
+                    TEXT_ALIGN_LEFT,
+                    1.0f, false, 0.0f, true);
+                break;
+            }
+            
+            case SHAPE_PIXELTEXT:
+            {
+                if(*curr_shape->text == 0) // empty string
+                    continue;
+
+                gfx_widgets_draw_text(
+                     font,
+                     curr_shape->text,
+                     curr_shape->x, curr_shape->y,
+                     video_width, video_height,
+                     curr_shape->color,
+                     TEXT_ALIGN_LEFT,
+                     true);
+                     
+                break;
+            }
+            
+            case SHAPE_RECT:
+            {
+                if(curr_shape->width==0 || curr_shape->height==0)  // nothing to draw
+                    continue;
+                    
+                // color conversion
+                uint32_t rgb = curr_shape->bg_color >> 8;  // shift out the last byte (alpha)
+                float alpha = (curr_shape->bg_color & 0xFF) / 255.0f; // extract alpha and normalize
+                float curr_quad_bg_color[16] = COLOR_HEX_TO_FLOAT(rgb, alpha);
+                
+                // TODO: handle the "line" color
+        
+                gfx_display_draw_quad(
+                     p_disp,
+                     userdata,
+                     video_width, video_height,
+                     curr_shape->x, curr_shape->y,
+                     curr_shape->width, curr_shape->height,
+                     video_width, video_height,
+                     curr_quad_bg_color,
+                     NULL);
+                     
+                break;
+            }
+        }
+    }
 }
 
-void lua_draw_gfxs_loop() {
-    // disable drawing when inside the menu
-#ifdef HAVE_MENU
-      bool menu_open = menu_state_get_ptr()->flags & MENU_ST_FLAG_ALIVE;
-      if (menu_open) return;
-#endif
-    
-    draw_strings_loop();
+
+
+uint32_t read_color_arg(lua_State *L, const int ARG_NO, const int DEFAULT_COLOR) {
+    if (lua_isnoneornil(L, ARG_NO))
+    {
+        // Argument is missing, using default value
+        return DEFAULT_COLOR;
+    }   
+    else if (lua_type(L, ARG_NO) == LUA_TNUMBER)
+    {
+        // Integer argument received
+        // convert 0xAARRGGBB → 0xRRGGBBAA
+        uint32_t i = lua_tointeger(L, 1);
+        uint8_t a = (i >> 24) & 0xFF;
+        uint8_t r = (i >> 16) & 0xFF;
+        uint8_t g = (i >> 8)  & 0xFF;
+        uint8_t b = i & 0xFF;
+
+        if (a == 0)
+            RARCH_LOG("WARNING: passed alpha is 0");
+
+        // reorder: RRGGBBAA
+        return (r << 24) | (g << 16) | (b << 8) | a;
+    }
+    else if (lua_type(L, ARG_NO) == LUA_TSTRING)
+    {
+        const char *color_str = lua_tostring(L, ARG_NO);
+        
+        switch (tolower(color_str[0])) // switch on first character
+        {
+            case 'b':
+                if (strcasecmp(color_str, "black") == 0) return 0x000000FF;
+                else if (strcasecmp(color_str, "blue") == 0) return 0x0000FFFF;
+                break;
+            case 'w':
+                if (strcasecmp(color_str, "white") == 0) return 0xFFFFFFFF;
+                break;
+            case 'r':
+                if (strcasecmp(color_str, "red") == 0) return 0xFF0000FF;
+                break;
+            case 'g':
+                if (strcasecmp(color_str, "green") == 0) return 0x00FF00FF;
+                break;
+            case 'p':
+                if (strcasecmp(color_str, "pink") == 0) return 0xFFC0CBFF;
+                break;
+            case 'y':
+                if (strcasecmp(color_str, "yellow") == 0) return 0xFFFF00FF;
+                break;
+            case '#':
+            {
+                // parse html-style color:  "#RRGGBB" or "#AARRGGBB";
+                size_t len = strlen(color_str);
+                unsigned int a=0,r=0,g=0,b=0;
+
+                if (len == 7)
+                {
+                    if (sscanf(color_str+1,"%02x%02x%02x",&r,&g,&b)!=3)
+                        return luaL_error(L,"invalid hex color '%s'",color_str);
+                    a = 0xFF;
+                }
+                else if (len == 9)
+                {
+                    if (sscanf(color_str+1,"%02x%02x%02x%02x",&a,&r,&g,&b)!=4)
+                        return luaL_error(L,"invalid hex color '%s'",color_str);
+                }
+                else
+                {
+                    return luaL_error(L,"invalid hex color length '%s'", color_str);
+                }
+
+                if (a==0) RARCH_LOG("WARNING: passed alpha is 0\n");
+                return (r<<24)|(g<<16)|(b<<8)|a;
+            }
+            default:
+            {
+                return luaL_error(L, "invalid color string arg");
+            }
+        }
+    }
+    else
+    {
+        return luaL_error(L, "invalid color arg type");
+    }
 }
 
-// void gui.drawString(int x, int y, string message, [luacolor forecolor = nil], [luacolor backcolor = nil], [int? fontsize = nil], [string fontfamily = nil], [string fontstyle = nil], [string horizalign = nil], [string vertalign = nil], [string surfacename = nil])
+
+/* TODO:
+client.transform_point( 32, 100 )
+		Transforms a point (x, y) in emulator space to a point in client space
+  */
+        
+        
+// void gui.drawString(int x, int y, string message, [luacolor forecolor = nil], [luacolor backcolor = nil], [int? fontsize = nil], [string fontfamily = nil]
+//      , [string fontstyle = nil], [string horizalign = nil], [string vertalign = nil], [string surfacename = nil])
 // Draws the given message in the emulator screen space (like all draw functions) at the given x,y coordinates and the given color. The default color is white. A fontfamily can be specified and is monospace generic if none is specified (font family options are the same as the .NET FontFamily class). The fontsize default is 12. The default font style is regular. Font style options are regular, bold, italic, strikethrough, underline. Horizontal alignment options are left (default), center, or right. Vertical alignment options are bottom (default), middle, or top. Alignment options specify which ends of the text will be drawn at the x and y coordinates. For pixel-perfect font look, make sure to disable aspect ratio correction.
 int gui_drawString(lua_State *L) {
     if(using_hw_framebuffer()) 
         return luaL_error(L, "cannot draw on hardware framebuffer");
+    
+    gui_shapes[gui_shapes_curr_index].type = SHAPE_TEXT;
+    // TODO: detect if invoked as drawText
+    //gui_shapes[gui_shapes_curr_index].type = SHAPE_PIXELTEXT;
         
-    unsigned x = luaL_checkinteger(L, 1);
-    unsigned y = luaL_checkinteger(L, 2);
-    const char *msg = luaL_checkstring(L, 3);
+    gui_shapes[gui_shapes_curr_index].x = luaL_checkinteger(L, 1);
+    gui_shapes[gui_shapes_curr_index].y = luaL_checkinteger(L, 2);
+    
+    if(gui_shapes[gui_shapes_curr_index].text) free(gui_shapes[gui_shapes_curr_index].text); // free prev string
+    gui_shapes[gui_shapes_curr_index].text = strdup(luaL_checkstring(L, 3));
 
-    uint32_t color = 0xFFFFFFFF; // default white, fully opaque
-    if (lua_gettop(L) >= 4 && lua_isnumber(L, 4))
-        color = (uint32_t)luaL_checkinteger(L, 4);
+    gui_shapes[gui_shapes_curr_index].color = read_color_arg(L, 4, 0xFFFFFFFF); // default white, fully opaque
+    gui_shapes[gui_shapes_curr_index].bg_color = read_color_arg(L, 5, 0x000000FF); // default black, fully opaque
     
-    uint32_t bg_color = 0x000000FF; // default black, fully opaque
-    //uint32_t bg_color = p_widget->backdrop_orig;
-    if (lua_gettop(L) >= 5 && lua_isnumber(L, 5))
-        bg_color = (uint32_t)luaL_checkinteger(L, 5);
+    gui_shapes[gui_shapes_curr_index].font_size = luaL_optinteger(L, 6, 12);
+    gui_shapes[gui_shapes_curr_index].font_face = luaL_optstring(L, 7, "");
     
-    // TODO: use a container for multiple shapes
-    gui_drawString_x = x;
-    gui_drawString_y = y;
-    if(gui_drawString_msg) free(gui_drawString_msg);
-    gui_drawString_msg = strdup(msg);
-    gui_drawString_color = color;
-    gui_drawString_bg_color = bg_color;
-    
+    // increase curr shape index
+    gui_shapes_curr_index += 1;
+    if( gui_shapes_curr_index == GUI_SHAPES_BUF_SIZE) 
+        gui_shapes_curr_index = 0;  // cycle back to 0
+
     return 0;
 }
+
+// void gui.drawRectangle(int x, int y, int width, int height, [luacolor line = nil], [luacolor background = nil], [string surfacename = nil])
+// Draws a rectangle at the given coordinate and the given width and height. Line is the color of the box. Background is the optional fill color
+int gui_drawRectangle(lua_State *L) {
+    if(using_hw_framebuffer()) 
+        return luaL_error(L, "cannot draw on hardware framebuffer");
+    
+    gui_shapes[gui_shapes_curr_index].type = SHAPE_RECT;
+        
+    gui_shapes[gui_shapes_curr_index].x = luaL_checkinteger(L, 1);
+    gui_shapes[gui_shapes_curr_index].y = luaL_checkinteger(L, 2);
+    gui_shapes[gui_shapes_curr_index].width = luaL_checkinteger(L, 3);
+    gui_shapes[gui_shapes_curr_index].height = luaL_checkinteger(L, 4);
+    
+    if(gui_shapes[gui_shapes_curr_index].text) free(gui_shapes[gui_shapes_curr_index].text); // free prev string
+    gui_shapes[gui_shapes_curr_index].text = strdup(luaL_checkstring(L, 3));
+    
+    gui_shapes[gui_shapes_curr_index].color = read_color_arg(L, 4, 0xFFFFFFFF); // default white, fully opaque
+    gui_shapes[gui_shapes_curr_index].bg_color = read_color_arg(L, 5, 0x000000FF); // default black, fully opaque
+    
+    // increase curr shape index
+    gui_shapes_curr_index += 1;
+    if( gui_shapes_curr_index == GUI_SHAPES_BUF_SIZE) 
+        gui_shapes_curr_index = 0;  // cycle back to 0
+
+    return 0;
+}
+
 
 // void gui.drawPixel(int x, int y, [luacolor color = nil], [string surfacename = nil])
 // Draws a single pixel at the given coordinates in the given color. Color is optional (if not specified it will be drawn black)
@@ -974,7 +1119,10 @@ static const struct luaL_Reg  guilib[] = {
 #ifdef HAVE_GFX_WIDGETS
     { "drawString" ,  gui_drawString },
     { "drawText" ,  gui_drawString },
-    { "drawPixel" ,  gui_drawPixel },
+    { "drawRectangle" ,  gui_drawRectangle },
+    //TODO: { "drawPixel" ,  gui_drawPixel },
+    { "clearGraphics" ,  gui_clearGraphics },
+    { "cleartext" ,  gui_clearGraphics },
     //TODO: drawLine
     //TODO: drawImage
     //TODO: drawRectangle
