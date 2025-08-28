@@ -45,6 +45,10 @@
 #include "gfx/video_display_server.h"
 #include "gfx/gfx_widgets.h"
 #include "tasks/tasks_internal.h"
+#ifdef HAVE_MENU
+#include "menu/menu_input.h"
+#include "menu/menu_driver.h"
+#endif
 
 
 // LUA API based on Bizhawk https://tasvideos.org/Bizhawk/LuaFunctions
@@ -56,12 +60,6 @@ int console_log(lua_State *L) {
     RARCH_LOG("[Lua] %s\n", msg);
     return 0;  // void function
 }
-
-static const struct luaL_Reg  consolelib[] = {
-    { "log" , console_log },
-    { "writeline" , console_log },
- 	{NULL,NULL}
-};
 
 
 // gameinfo.getromhash()
@@ -85,7 +83,7 @@ int gameinfo_getromname(lua_State *L) {
 }
 
 // gameinfo_getrompath()
-// returns the full path of the currently loaded rom, if a rom is loaded
+// returns the full path of the currently loaded rom, if a rom is loaded (can be a relative path)
 int gameinfo_getrompath(lua_State *L) {
     const char *path = path_get(RARCH_PATH_CONTENT);
     const char *r = path ? path : "";  // fallback to empty string
@@ -93,26 +91,70 @@ int gameinfo_getrompath(lua_State *L) {
     return 1;
 }
 
-static const struct luaL_Reg  gameinfolib[] = {
-    //{ "getboardtype" , gameinfo_getboardtype },
-    { "getromhash" , gameinfo_getromhash }, 
-    { "getromname", gameinfo_getromname },
-    { "getrompath", gameinfo_getrompath },
-    //{ "getstatus" , gameinfo_getstatus },  // returns the game database status of the currently loaded rom. Statuses are for example: GoodDump, BadDump, Hack, Unknown, NotInDatabase
-    //{ "indatabase", gameinfo_indatabase }, // returns whether or not the currently loaded rom is in the game database
-    //{ "isstatusbad", gameinfo_isstatusbad }  // returns the currently loaded rom's game database status is considered 'bad'
-	{NULL,NULL}
-};
+// rom.readbyte(int address)
+// Get an unsigned byte from the actual ROM file at the given address.  
+// TODO: handle content with multiple entries?
+int rom_readbyte(lua_State *L) {
+    size_t addr = luaL_checkinteger(L, 1);
 
-static const struct luaL_Reg  romlib[] = {
-    { "gethash" , gameinfo_getromhash }, 
-    { "getfilename", gameinfo_getromname },
-    //TODO: rom.readbyte(int address)
-	{NULL,NULL}
-};
+    content_state_t *p_content = content_state_get_ptr();
+    if (!p_content || !p_content->content_list || p_content->content_list->size == 0)
+        return luaL_error(L, "Content is not loaded in RAM");
+        
+    void* rom_data = p_content->content_list->entries[0].data;
+    size_t rom_data_size = p_content->content_list->entries[0].data_size;
+    if(!rom_data || !rom_data_size)
+        return luaL_error(L, "Content is not loaded in RAM");
+    
+    if (addr >= rom_data_size)
+        return luaL_error(L, "Address %d out of range (0 .. %zu)", (int)addr, rom_data_size - 1);
+
+    const uint8_t *rom = (const uint8_t *)rom_data;
+    lua_pushinteger(L, rom[addr]);     
+    return 1;
+}
+
+// bool savestate.loadslot(int slotnum, [bool suppressosd = False])
+// Loads the savestate at the given slot number (must be an integer between 1 and 10). Returns true if succeeded. 
+int savestate_loadslot(lua_State *L) {
+    int slotnum = luaL_checkinteger(L, 1);
+    settings_t *settings            = config_get_ptr();
+    configuration_set_int(settings, settings->ints.state_slot, slotnum);
+    command_event(CMD_EVENT_LOAD_STATE, NULL);
+    return 0; 
+}
+
+// void savestate.saveslot(int slotnum, [bool suppressosd = False])
+// Saves a state at the given save slot (must be an integer between 1 and 10). 
+int savestate_saveslot(lua_State *L) {
+    int slotnum = luaL_checkinteger(L, 1);
+    settings_t *settings            = config_get_ptr();
+    configuration_set_int(settings, settings->ints.state_slot, slotnum);
+    command_event(CMD_EVENT_SAVE_STATE, NULL);
+    return 0; 
+}
+
+// void savestate.save(string path, [bool suppressosd = False])
+// Saves a state at the given path.
+int savestate_save(lua_State *L) {
+    const char *state_path = luaL_checkstring(L, 1);
+    command_event(CMD_EVENT_SAVE_STATE_TO_RAM, NULL);
+    command_event(CMD_EVENT_RAM_STATE_TO_FILE, state_path);
+    return 0;
+}
+
+// bool savestate.load(string path, [bool suppressosd = False])
+// Loads a savestate with the given path. Returns true if succeeded.
+int savestate_load(lua_State *L) {
+    const char *state_path = luaL_checkstring(L, 1);
+    bool r = content_load_state(state_path, false, true);  /* Load a state from disk to memory. */
+    //command_event(CMD_EVENT_LOAD_STATE_FROM_RAM, NULL);
+    lua_pushboolean(L, r);
+    return 1;
+}
 
 
-// client.ispaused()
+// bool client.ispaused()
 // Returns true if emulator is paused, otherwise, false
 int client_ispaused(lua_State *L) {
     runloop_state_t *runloop_st = runloop_state_get_ptr();
@@ -121,7 +163,7 @@ int client_ispaused(lua_State *L) {
     return 1;
 }
 
-// client.emulating()
+// bool client.emulating()
 // Returns true if emulator is paused, otherwise, false
 int client_emulating(lua_State *L) {
     runloop_state_t *runloop_st = runloop_state_get_ptr();
@@ -130,7 +172,7 @@ int client_emulating(lua_State *L) {
     return 1;
 }
 
-// client.isturbo()
+// bool client.isturbo()
 // Returns true if emulator is in turbo mode, otherwise, false
 int client_isturbo(lua_State *L) {
     runloop_state_t *runloop_st = runloop_state_get_ptr();
@@ -139,7 +181,7 @@ int client_isturbo(lua_State *L) {
     return 1;
 }
 
-// client.screenheight()
+// int client.screenheight()
 // Gets the current height in pixels of the emulator's drawing area
 int client_screenheight(lua_State *L) {
     video_driver_state_t *video_st    = video_state_get_ptr();
@@ -152,72 +194,74 @@ int client_screenheight(lua_State *L) {
 // Gets the current height in pixels of the emulator's drawing area
 int client_screenwidth(lua_State *L) {
     video_driver_state_t *video_st    = video_state_get_ptr();
-    unsigned r = video_st->width;
+    unsigned r = video_st->width;    
     lua_pushinteger(L, (lua_Integer)r);
     return 1;
 }
 
-// client.bufferheight
+// int client.bufferheight()
 // Gets the visible height of the emu display surface (the core video output). This excludes the gameExtraPadding you've set.
 int client_bufferheight(lua_State *L) {
     video_driver_state_t *video_st    = video_state_get_ptr();
     unsigned r  = video_st->av_info.geometry.base_height;
+    //ALT: unsigned r  = video_st->frame_cache_height;
     lua_pushinteger(L, (lua_Integer)r);
     return 1;
 }
 
-// client.bufferwidth()
+// int client.bufferwidth()
 // Gets the visible width of the emu display surface (the core video output). This excludes the gameExtraPadding you've set.
 int client_bufferwidth(lua_State *L) {
     video_driver_state_t *video_st    = video_state_get_ptr();
     unsigned r  = video_st->av_info.geometry.base_width;
+    //ALT: unsigned r  = video_st->frame_cache_width;
     lua_pushinteger(L, (lua_Integer)r);
     return 1;
 }
 
-// client.getversion()
+// string client.getversion()
 // Returns the current stable Retroarch version
 int client_getversion(lua_State *L) {
     lua_pushstring(L, PACKAGE_VERSION);
     return 1; 
 }
 
-// client.pause()
+// void client.pause()
 // Pauses the emulator
 int client_pause(lua_State *L) {
     command_event(CMD_EVENT_PAUSE, NULL);
     return 0; 
 }
 
-// client.unpause()
+// void client.unpause()
 // Unpauses the emulator
 int client_unpause(lua_State *L) {
     command_event(CMD_EVENT_UNPAUSE, NULL);
     return 0; 
 }
 
-// client.togglepause()
+// void client.togglepause()
 // Toggles the current pause state
 int client_togglepause(lua_State *L) {
     command_event(CMD_EVENT_PAUSE_TOGGLE, NULL);
     return 0; 
 }
 
-// client.exit()
+// void client.exit()
 // Closes the emulator
 int client_exit(lua_State *L) {
     command_event(CMD_EVENT_QUIT, NULL);
     return 0; 
 }
 
-// client.reboot_core()
+// void client.reboot_core()
 // Reboots the currently loaded core
 int client_reboot_core(lua_State *L) {
     command_event(CMD_EVENT_RESET, NULL);
     return 0; 
 }
 
-// client.closerom()
+// void client.closerom()
 // Closes the loaded Rom
 int client_closerom(lua_State *L) {
     command_event(CMD_EVENT_CLOSE_CONTENT, NULL);
@@ -226,42 +270,29 @@ int client_closerom(lua_State *L) {
 
 
 // void client.screenshot([string path = nil])
-// TODO: if a parameter is passed it will function as the Screenshot As menu item of EmuHawk, else it will function as the Screenshot menu item
+// TODO: allow passing path
 int client_screenshot(lua_State *L) {
-    command_event(CMD_EVENT_TAKE_SCREENSHOT, NULL);
+    const char *path = luaL_optstring(L, 1, NULL); // optional first argument, defaults to NULL
+    if(!path)
+        command_event(CMD_EVENT_TAKE_SCREENSHOT, NULL);
+    /*
+    else
+        take_screenshot(
+          const char *screenshot_dir,
+          const char *path, bool silence,
+          bool has_valid_framebuffer, bool fullpath, true);
+        */
     return 0; 
 }
 
-// client.sleep(int millis)
+// void client.sleep(int millis)
 // sleeps for n milliseconds
 int client_sleep(lua_State *L) {
-    if (lua_gettop(L) < 1) return luaL_error(L, "emulation_sleep: expected 1 argument (milliseconds)");
     lua_Integer ms = luaL_checkinteger(L, 1);
     if (ms < 0) return luaL_error(L, "emulation_sleep: time must be >= 0");
     retro_sleep((uint64_t)ms);
     return 0; 
 }
-
-static const struct luaL_Reg  clientlib [] = {
-    { "ispaused" ,  client_ispaused },
-    { "isturbo" ,  client_isturbo },
-    { "screenheight" , client_screenheight },
-    { "screenwidth" , client_screenwidth },
-    { "bufferheight" , client_bufferheight },
-    { "bufferwidth" , client_bufferwidth },
-    { "getversion" , client_getversion },
-    { "pause" , client_pause },
-    { "unpause" , client_unpause },
-    { "togglepause" , client_togglepause },
-    { "exit" , client_exit },
-    { "reboot_core" , client_reboot_core },
-    { "closerom" , client_closerom },  
-    { "screenshot", client_screenshot },
-    { "sleep" , client_sleep },  
-    // client.getconfig  // TODO: wrap settings_t *settings           = config_get_ptr();
-    // client.openrom(string path)  -> core_load_game
-	{NULL,NULL}
-};
 
 
 // nluatable joypad.get([int? controller = nil])
@@ -320,8 +351,6 @@ int input_get(lua_State *L) {
 
     input_driver_state_t *input_st    = input_state_get_ptr();
     settings_t *settings = config_get_ptr();
-    //input_bits_t current_bits;
-    //input_driver_collect_system_input(input_st, settings, &current_bits);
     input_driver_t *current_input           = input_st->current_driver;
     
     char curr_keyname[64] = {0};
@@ -330,6 +359,7 @@ int input_get(lua_State *L) {
    for (unsigned key = 0; key < RETROK_LAST; key++)
    {
       input_keymaps_translate_rk_to_str(key, curr_keyname, 64);
+      string_to_upper(curr_keyname);
   
      bool curr_pressed = current_input->input_state(
               input_st->current_data,
@@ -352,18 +382,6 @@ int input_get(lua_State *L) {
 }
 
 
-static const struct luaL_Reg  joypadlib [] = {
-    { "get" ,  joypad_get },
-    { "read" ,  joypad_get },
-	{NULL,NULL}
-};
-
-static const struct luaL_Reg  inputlib [] = {
-    { "get" ,  input_get },
-    { "read" ,  input_get },
-	{NULL,NULL}
-};
-
 bool using_hw_framebuffer() {
     video_driver_state_t *video_st = video_state_get_ptr();  
     if(video_st->frame_cache_data && (video_st->frame_cache_data == RETRO_HW_FRAME_BUFFER_VALID))
@@ -373,13 +391,7 @@ bool using_hw_framebuffer() {
 }
 
 
-size_t get_memory_address_arg(lua_State *L, const int BYTES_TO_READ, const unsigned int domain) {
-    if (lua_gettop(L) < 1)
-        return luaL_error(L, "missing address");
-        
-    if (!lua_isnumber(L, 1))
-        return luaL_error(L, "invalid address");
-    
+size_t get_memory_address_arg(lua_State *L, const int BYTES_TO_READ, const unsigned int domain) {    
     const unsigned int address = (unsigned int)luaL_checkinteger(L, 1);
     
     // check if the address is valid for the current core
@@ -469,7 +481,6 @@ int memory_read_s16_be(lua_State *L) {
 int memory_writebyte(lua_State *L) {
     const unsigned int domain = get_memory_domain_arg(L, 3);
     const size_t address = get_memory_address_arg(L, 1, domain);
-    
     unsigned int value = (unsigned int)luaL_checkinteger(L, 2);
 
     uint8_t *data = runloop_state_get_ptr()->current_core.retro_get_memory_data(domain);  
@@ -483,9 +494,6 @@ int memory_writebyte(lua_State *L) {
 // nluatable memory.readbyterange(long addr, int length, [string domain = nil])
 // Reads the address range that starts from address, and is length long. Returns a zero-indexed table containing the read values (an array of bytes.)
 int memory_readbyterange(lua_State *L) {
-    if (lua_gettop(L) < 2 || !lua_isnumber(L, 2) )
-        return luaL_error(L, "memory.readbyterange: argument 1 (addr) and 2 (length) are required");
-    
     const unsigned int domain = get_memory_domain_arg(L, 3);
     unsigned length = (unsigned)luaL_checkinteger(L, 2);
     const size_t address = get_memory_address_arg(L, length, domain);      
@@ -506,13 +514,9 @@ int memory_readbyterange(lua_State *L) {
 // Returns a hash as a string of a region of memory, starting from addr, through count bytes. If the domain is unspecified, it uses the current region.
 // Bizhawk currently uses sha256, so we do the same
 int memory_hash_region(lua_State *L) {
-    if (lua_gettop(L) < 2 || !lua_isnumber(L, 2) )
-        return luaL_error(L, "memory.hash_region: argument 1 (addr) and 2 (length) are required");
-    
     const unsigned int domain = get_memory_domain_arg(L, 3);
     unsigned length = (unsigned)luaL_checkinteger(L, 2);
     const size_t address = get_memory_address_arg(L, length, domain);
-      
     const uint8_t *data = runloop_state_get_ptr()->current_core.retro_get_memory_data(domain);  
     if (!data) return luaL_error(L, "unable to access memory");
     // else
@@ -562,6 +566,8 @@ int emu_getsystemid(lua_State *L) {
         if (strncmp(sysid, "virtual_boy", strlen(sysid)) == 0) sysid = "VB" ;
         if (strncmp(sysid, "wonderswan", strlen(sysid)) == 0) sysid = "WSWAN" ;
         if (strncmp(sysid, "neo_geo_pocket", strlen(sysid)) == 0) sysid = "NGP" ;
+        // make sure it is in uppercase ("nes"->"NES")
+        string_to_upper(sysid);
     }
     lua_pushstring(L, sysid ? sysid : "");
     return 1;
@@ -585,9 +591,6 @@ int emu_getdir(lua_State *L) {
 // Usage is local r,g,b,palette = emu.getscreenpixel(5, 5, false) to retrieve the current red/green/blue colors and palette value of the pixel at 5x5.
 // The "palette" value is actually the 32-bit pixel value.
 int emu_getscreenpixel(lua_State *L) {
-    if (lua_gettop(L) < 2)
-        return luaL_error(L, "emu.getscreenpixel(x, y) requires 2 arguments");
-
     if(using_hw_framebuffer()) 
         return luaL_error(L, "cannot read hardware framebuffer");
         
@@ -600,7 +603,7 @@ int emu_getscreenpixel(lua_State *L) {
     unsigned height = video_st->frame_cache_height;
     size_t pitch    = video_st->frame_cache_pitch;
     
-    // Bounds-check if desired
+    // Bounds-check
     if (!frame || x >= width || y >= height) {
         lua_pushinteger(L, 0);
         lua_pushinteger(L, 0);
@@ -608,8 +611,6 @@ int emu_getscreenpixel(lua_State *L) {
         lua_pushinteger(L, 0);
         return 4;
     }
-    
-    // TODO: detect hardware-rendered cores and abort (segfault otherwise)
 
     // Locate the pixel (assumes 32bpp XRGB8888)
     uint32_t *pixels = (uint32_t*)frame;
@@ -717,7 +718,7 @@ video_driver_build_info(&video);
    //void *userdata = VIDEO_DRIVER_GET_PTR_INTERNAL(video_st);
    gfx_display_t *p_disp      = disp_get_ptr();
    
-   float quad_color[4] = {0.0f, 1.0f, 0.0f, 1.0f};  // RGBA
+   float quad_color[16]              = COLOR_HEX_TO_FLOAT(0x000000, 1.0f);  // RGB, alpha
 
    gfx_display_draw_quad(
          p_disp,
@@ -765,15 +766,18 @@ video_driver_build_info(&video);
 }
 
 void lua_draw_gfxs_loop() {
+    // disable drawing when inside the menu
+#ifdef HAVE_MENU
+      bool menu_open = menu_state_get_ptr()->flags & MENU_ST_FLAG_ALIVE;
+      if (menu_open) return;
+#endif
+    
     draw_strings_loop();
 }
 
 // void gui.drawString(int x, int y, string message, [luacolor forecolor = nil], [luacolor backcolor = nil], [int? fontsize = nil], [string fontfamily = nil], [string fontstyle = nil], [string horizalign = nil], [string vertalign = nil], [string surfacename = nil])
 // Draws the given message in the emulator screen space (like all draw functions) at the given x,y coordinates and the given color. The default color is white. A fontfamily can be specified and is monospace generic if none is specified (font family options are the same as the .NET FontFamily class). The fontsize default is 12. The default font style is regular. Font style options are regular, bold, italic, strikethrough, underline. Horizontal alignment options are left (default), center, or right. Vertical alignment options are bottom (default), middle, or top. Alignment options specify which ends of the text will be drawn at the x and y coordinates. For pixel-perfect font look, make sure to disable aspect ratio correction.
 int gui_drawString(lua_State *L) {
-   if (lua_gettop(L) < 3)
-        return luaL_error(L, "gui.drawString(x, y, message) requires at least 3 arguments");
-
     if(using_hw_framebuffer()) 
         return luaL_error(L, "cannot draw on hardware framebuffer");
         
@@ -805,9 +809,6 @@ int gui_drawString(lua_State *L) {
 // Draws a single pixel at the given coordinates in the given color. Color is optional (if not specified it will be drawn black)
 // Luacolor must be a 32-bit number in the format 0xAARRGGBB;
 int gui_drawPixel(lua_State *L) {
-   if (lua_gettop(L) < 2)
-        return luaL_error(L, "gui.drawPixel(x, y) requires at least 2 arguments");
-
     if(using_hw_framebuffer()) 
         return luaL_error(L, "cannot draw on hardware framebuffer");
 
@@ -829,7 +830,7 @@ int gui_drawPixel(lua_State *L) {
     printf("%u\n", frame);
     printf("%u %u\n", width, height);
     
-    // Bounds-check if desired
+    // Bounds-check
     if (!frame || x >= width || y >= height) {
         return luaL_error(L, "invalid coords or frame buffer");
     }
@@ -870,20 +871,37 @@ int gui_drawPixel(lua_State *L) {
 }
 #endif
 
+
+#ifdef LUA_SCRIPTS_SANDBOXED
+void check_safe_url(lua_State *L, url) {
+    if (!string_starts_with("http://localhost") && !string_starts_with("https://localhost"))
+        return luaL_error(L, "cannot send HTTP request to remote domain due to sandboxing enabled");
+}
+#endif
+
+
 // string comm.httpGet(string url)
 // makes a HTTP GET request
 int comm_httpget(lua_State *L) {
-    const char *url = luaL_checkstring(L,1);  
+    const char *url = luaL_checkstring(L,1);
+#ifdef LUA_SCRIPTS_SANDBOXED 
+    check_safe_url(L, url);
+#endif
+    // TODO: allow passing headers: task_push_http_transfer_with_headers(...)
     void* t = task_push_http_transfer(url, true, "GET", NULL, NULL);
     if(!t) return luaL_error(L, "cannot send HTTP request");
-    lua_pushstring(L, "OK");  // TODO: return body to the caller?   
+    // TODO: blocking request, read the response body and return as a string, see in task_core_updater.c
+    lua_pushstring(L, "OK");
     return 1;
 }
 
 // string comm.httpPost(string url, string payload)
 // makes a HTTP POST request
 int comm_httppost(lua_State *L) {
-    const char *url = luaL_checkstring(L,1);  
+    const char *url = luaL_checkstring(L,1);
+#ifdef LUA_SCRIPTS_SANDBOXED 
+    check_safe_url(L, url);
+#endif
     const char *payload = luaL_checkstring(L,2);
     void* t = task_push_http_post_transfer(url, payload, true, "POST", NULL, NULL);
     if(!t) return luaL_error(L, "cannot send HTTP request");
@@ -894,7 +912,10 @@ int comm_httppost(lua_State *L) {
 // string comm.httpPost(string url, string payload)
 // makes a HTTP PUT request
 int comm_httpput(lua_State *L) {
-    const char *url = luaL_checkstring(L,1);  
+    const char *url = luaL_checkstring(L,1);
+#ifdef LUA_SCRIPTS_SANDBOXED 
+    check_safe_url(L, url);
+#endif
     const char *payload = luaL_checkstring(L,2);
     void* t = task_push_http_post_transfer(url, payload, true, "PUT", NULL, NULL);
     if(!t) return luaL_error(L, "cannot send HTTP request");
@@ -902,6 +923,51 @@ int comm_httpput(lua_State *L) {
     return 1;
 }
 
+
+static const struct luaL_Reg  consolelib[] = {
+    { "log" , console_log },
+    { "writeline" , console_log },
+ 	{NULL,NULL}
+};
+
+static const struct luaL_Reg  gameinfolib[] = {
+    //{ "getboardtype" , gameinfo_getboardtype },
+    { "getromhash" , gameinfo_getromhash }, 
+    { "getromname", gameinfo_getromname },
+    { "getrompath", gameinfo_getrompath },
+    //{ "getstatus" , gameinfo_getstatus },  // returns the game database status of the currently loaded rom. Statuses are for example: GoodDump, BadDump, Hack, Unknown, NotInDatabase
+    //{ "indatabase", gameinfo_indatabase }, // returns whether or not the currently loaded rom is in the game database
+    //{ "isstatusbad", gameinfo_isstatusbad }  // returns the currently loaded rom's game database status is considered 'bad'
+	{NULL,NULL}
+};
+
+static const struct luaL_Reg  romlib[] = {
+    { "gethash" , gameinfo_getromhash }, 
+    { "getfilename", gameinfo_getromname },
+    { "readbyte", rom_readbyte },  // fceux-only
+	{NULL,NULL}
+};
+
+static const struct luaL_Reg  clientlib [] = {
+    { "ispaused" ,  client_ispaused },
+    { "isturbo" ,  client_isturbo },
+    { "screenheight" , client_screenheight },
+    { "screenwidth" , client_screenwidth },
+    { "bufferheight" , client_bufferheight },
+    { "bufferwidth" , client_bufferwidth },
+    { "getversion" , client_getversion },
+    { "pause" , client_pause },
+    { "unpause" , client_unpause },
+    { "togglepause" , client_togglepause },
+    { "exit" , client_exit },
+    { "reboot_core" , client_reboot_core },
+    { "closerom" , client_closerom },  
+    { "screenshot", client_screenshot },
+    { "sleep" , client_sleep },  
+    // client.getconfig  // TODO: wrap settings_t *settings           = config_get_ptr();
+    // client.openrom(string path)  -> core_load_game
+	{NULL,NULL}
+};
 
 static const struct luaL_Reg  guilib[] = {
     { "addmessage" ,  gui_addmessage },
@@ -944,7 +1010,6 @@ static const struct luaL_Reg  emulib[] = {
 	{NULL,NULL}
 };
 
-
 static const struct luaL_Reg  memorylib [] = {
     { "readbyte" ,  memory_readbyte },
     { "read_u8" ,  memory_readbyte },
@@ -973,6 +1038,18 @@ static const struct luaL_Reg  memorylib [] = {
 	{NULL,NULL}
 };
 
+static const struct luaL_Reg  joypadlib [] = {
+    { "get" ,  joypad_get },
+    { "read" ,  joypad_get },
+    // TODO: { "rumble" ,  joypad_rumble },
+	{NULL,NULL}
+};
+
+static const struct luaL_Reg  inputlib [] = {
+    { "get" ,  input_get },
+    { "read" ,  input_get },
+	{NULL,NULL}
+};
 
 static const struct luaL_Reg  commlib[] = {
     { "httpGet", comm_httpget },
@@ -982,20 +1059,28 @@ static const struct luaL_Reg  commlib[] = {
 	{NULL,NULL}
 };
 
+static const struct luaL_Reg  savestatelib[] = {
+    { "loadslot", savestate_loadslot },
+    { "saveslot", savestate_saveslot },   
+    { "save", savestate_save },   
+    { "load", savestate_load },   
+	{NULL,NULL}
+};
+
+
 // stdlib function sandboxing
 int safe_io_open(lua_State *L) {
-    if (lua_gettop(L) < 1)
-        return luaL_error(L, "[Lua] open: argument 1 (addr) is required");
-
     const char *user_path = luaL_checkstring(L, 1);
     const char *mode = luaL_optstring(L, 2, "r");
 
-    /* TOO RESTRICTIVE:
     if (path_is_absolute(user_path)) {
-        return luaL_error(L, "Access denied: file path is absolute, must be relative");
-    }*/
+        return luaL_error(L, "Access denied: file path is absolute, must be relative. Disable sandboxing to bypass.");
+    }
+    if (string_starts_with(user_path, "..")) {
+        return luaL_error(L, "Access denied: file path cannot access parent. Disable sandboxing to bypass.");
+    }
     // TODO: allow subdirs of
-    //const char* r = path_get(RARCH_PATH_CONFIG);  // /system
+    //const char* retroarch_system_dir = path_get(RARCH_PATH_CONFIG);  // /system
     
     // Retrieve original io.open from registry
     lua_getfield(L, LUA_REGISTRYINDEX, "original_io_open");
@@ -1050,9 +1135,9 @@ void lua_init() {
     // Load full stdlib
     luaL_openlibs(L);
     
+#ifdef LUA_SCRIPTS_SANDBOXED
     // override unsafe functions
     // io.open
-    /*
     lua_getglobal(L, "io");
     lua_getfield(L, -1, "open");       // push io.open
     lua_setfield(L, LUA_REGISTRYINDEX, "original_io_open"); // registry["original_io_open"] = io.open
@@ -1062,7 +1147,6 @@ void lua_init() {
     lua_pushcfunction(L, safe_io_open); // push our safe_io_open function
     lua_settable(L, -3);               // io.open = safe_io_open
     lua_pop(L, 1);                    // pop io table
-    */
     
     // disable unsafe functions
     lua_getglobal(L, "os");
@@ -1079,7 +1163,8 @@ void lua_init() {
     lua_pushnil(L); lua_setglobal(L, "loadfile");
     lua_pushnil(L); lua_setglobal(L, "require");
     lua_pushnil(L); lua_setglobal(L, "load");  // disables eval-like dynamic code
-    
+#endif
+
     // register custom C functions
     // MEMO: luaL_register is deprecated as of Lua 5.2 and later. It still exists in Lua 5.1.
     luaL_newlib(L, consolelib);
@@ -1102,7 +1187,8 @@ void lua_init() {
     lua_setglobal(L, "gui");
     luaL_newlib(L, commlib);
     lua_setglobal(L, "comm");
-    //TODO: lua_register(L, "savestate", savestatelib);
+    luaL_newlib(L, savestatelib);
+    lua_setglobal(L, "savestate");
     //TODO: lua_register(L, "movie", movielib);    
     lua_settop(L, 0); // clean the stack, because each call to lua_register leaves a table on top
 
