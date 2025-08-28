@@ -294,6 +294,27 @@ int client_sleep(lua_State *L) {
     return 0; 
 }
 
+// object client.getconfig()
+// gets the current config settings object
+// TODO: add more fields, should match the names used here https://github.com/TASEmulators/BizHawk/blob/master/src/BizHawk.Client.Common/config/Config.cs
+int client_getconfig(lua_State *L) {
+    settings_t *settings            = config_get_ptr();
+
+    lua_newtable(L);
+
+    lua_pushinteger(L, settings->ints.state_slot);
+    lua_setfield(L, -2, "SaveSlot");
+
+    // TODO: more settings
+    /*
+    // Set another field, e.g., PauseOnFrame = true
+    lua_pushboolean(L, 0);              // false
+    lua_setfield(L, -2, "PauseOnFrame"); 
+    */
+
+    return 1;
+}
+
 
 // nluatable joypad.get([int? controller = nil])
 // returns a lua table of the controller buttons pressed. If supplied, it will only return a table of buttons for the given controller
@@ -799,7 +820,6 @@ void lua_draw_gfxs_loop() {
 }
 
 
-
 uint32_t read_color_arg(lua_State *L, const int ARG_NO, const int DEFAULT_COLOR) {
     if (lua_isnoneornil(L, ARG_NO))
     {
@@ -817,7 +837,7 @@ uint32_t read_color_arg(lua_State *L, const int ARG_NO, const int DEFAULT_COLOR)
         uint8_t b = i & 0xFF;
 
         if (a == 0)
-            RARCH_LOG("WARNING: passed alpha is 0");
+            RARCH_LOG("WARNING: passed alpha is 0\n");
 
         // reorder: RRGGBBAA
         return (r << 24) | (g << 16) | (b << 8) | a;
@@ -898,21 +918,23 @@ int gui_drawString(lua_State *L) {
     if(using_hw_framebuffer()) 
         return luaL_error(L, "cannot draw on hardware framebuffer");
     
-    gui_shapes[gui_shapes_curr_index].type = SHAPE_TEXT;
+    gui_shape_t* curr_shape = &gui_shapes[gui_shapes_curr_index];
+    
+    curr_shape->type = SHAPE_TEXT;
     // TODO: detect if invoked as drawText
-    //gui_shapes[gui_shapes_curr_index].type = SHAPE_PIXELTEXT;
+    //curr_shape->type = SHAPE_PIXELTEXT;
         
-    gui_shapes[gui_shapes_curr_index].x = luaL_checkinteger(L, 1);
-    gui_shapes[gui_shapes_curr_index].y = luaL_checkinteger(L, 2);
+    curr_shape->x = luaL_checkinteger(L, 1);
+    curr_shape->y = luaL_checkinteger(L, 2);
     
-    if(gui_shapes[gui_shapes_curr_index].text) free(gui_shapes[gui_shapes_curr_index].text); // free prev string
-    gui_shapes[gui_shapes_curr_index].text = strdup(luaL_checkstring(L, 3));
+    if(curr_shape->text) free(curr_shape->text); // free prev string
+    curr_shape->text = strdup(luaL_checkstring(L, 3));
 
-    gui_shapes[gui_shapes_curr_index].color = read_color_arg(L, 4, 0xFFFFFFFF); // default white, fully opaque
-    gui_shapes[gui_shapes_curr_index].bg_color = read_color_arg(L, 5, 0x000000FF); // default black, fully opaque
+    curr_shape->color = read_color_arg(L, 4, 0xFFFFFFFF); // default white, fully opaque
+    curr_shape->bg_color = read_color_arg(L, 5, 0x000000FF); // default black, fully opaque
     
-    gui_shapes[gui_shapes_curr_index].font_size = luaL_optinteger(L, 6, 12);
-    gui_shapes[gui_shapes_curr_index].font_face = luaL_optstring(L, 7, "");
+    curr_shape->font_size = luaL_optinteger(L, 6, 12);
+    curr_shape->font_face = luaL_optstring(L, 7, "");
     
     // increase curr shape index
     gui_shapes_curr_index += 1;
@@ -927,19 +949,20 @@ int gui_drawString(lua_State *L) {
 int gui_drawRectangle(lua_State *L) {
     if(using_hw_framebuffer()) 
         return luaL_error(L, "cannot draw on hardware framebuffer");
-    
-    gui_shapes[gui_shapes_curr_index].type = SHAPE_RECT;
         
-    gui_shapes[gui_shapes_curr_index].x = luaL_checkinteger(L, 1);
-    gui_shapes[gui_shapes_curr_index].y = luaL_checkinteger(L, 2);
-    gui_shapes[gui_shapes_curr_index].width = luaL_checkinteger(L, 3);
-    gui_shapes[gui_shapes_curr_index].height = luaL_checkinteger(L, 4);
+    gui_shape_t* curr_shape = &gui_shapes[gui_shapes_curr_index];
     
-    if(gui_shapes[gui_shapes_curr_index].text) free(gui_shapes[gui_shapes_curr_index].text); // free prev string
-    gui_shapes[gui_shapes_curr_index].text = strdup(luaL_checkstring(L, 3));
+    curr_shape->type = SHAPE_RECT;
+        
+    curr_shape->x = luaL_checkinteger(L, 1);
+    curr_shape->y = luaL_checkinteger(L, 2);
+    curr_shape->width = luaL_checkinteger(L, 3);
+    curr_shape->height = luaL_checkinteger(L, 4);
     
-    gui_shapes[gui_shapes_curr_index].color = read_color_arg(L, 4, 0xFFFFFFFF); // default white, fully opaque
-    gui_shapes[gui_shapes_curr_index].bg_color = read_color_arg(L, 5, 0x000000FF); // default black, fully opaque
+    if(curr_shape->text) free(curr_shape->text); // free prev string
+    
+    curr_shape->color = read_color_arg(L, 4, 0xFFFFFFFF); // default white, fully opaque
+    curr_shape->bg_color = read_color_arg(L, 5, 0x000000FF); // default black, fully opaque
     
     // increase curr shape index
     gui_shapes_curr_index += 1;
@@ -1109,7 +1132,7 @@ static const struct luaL_Reg  clientlib [] = {
     { "closerom" , client_closerom },  
     { "screenshot", client_screenshot },
     { "sleep" , client_sleep },  
-    // client.getconfig  // TODO: wrap settings_t *settings           = config_get_ptr();
+    { "getconfig" , client_getconfig },  
     // client.openrom(string path)  -> core_load_game
 	{NULL,NULL}
 };
@@ -1125,7 +1148,6 @@ static const struct luaL_Reg  guilib[] = {
     { "cleartext" ,  gui_clearGraphics },
     //TODO: drawLine
     //TODO: drawImage
-    //TODO: drawRectangle
     //TODO: drawBox
 #endif
     // FCEUX-aliases
