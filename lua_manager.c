@@ -115,7 +115,7 @@ int rom_readbyte(lua_State *L) {
 }
 
 // bool savestate.loadslot(int slotnum, [bool suppressosd = False])
-// Loads the savestate at the given slot number (must be an integer between 1 and 10). Returns true if succeeded. 
+// Loads the savestate at the given slot number. Returns true if succeeded. 
 int savestate_loadslot(lua_State *L) {
     int slotnum = luaL_checkinteger(L, 1);
     settings_t *settings            = config_get_ptr();
@@ -125,7 +125,7 @@ int savestate_loadslot(lua_State *L) {
 }
 
 // void savestate.saveslot(int slotnum, [bool suppressosd = False])
-// Saves a state at the given save slot (must be an integer between 1 and 10). 
+// Saves a state at the given save slot. 
 int savestate_saveslot(lua_State *L) {
     int slotnum = luaL_checkinteger(L, 1);
     settings_t *settings            = config_get_ptr();
@@ -566,7 +566,6 @@ int emu_framecount(lua_State *L) {
 
 // emu.getsystemid()
 // returns (if available) the board name of the loaded ROM
-// TODO: match Bizhaws strings: "pc_engine" -> "PCE", ...
 int emu_getsystemid(lua_State *L) {
     core_info_t *core_info      = NULL;
     core_info_get_current_core(&core_info);
@@ -587,6 +586,7 @@ int emu_getsystemid(lua_State *L) {
         if (strncmp(sysid, "virtual_boy", strlen(sysid)) == 0) sysid = "VB" ;
         if (strncmp(sysid, "wonderswan", strlen(sysid)) == 0) sysid = "WSWAN" ;
         if (strncmp(sysid, "neo_geo_pocket", strlen(sysid)) == 0) sysid = "NGP" ;
+        // TODO: more matches
         // make sure it is in uppercase ("nes"->"NES")
         string_to_upper(sysid);
     }
@@ -715,7 +715,11 @@ void lua_draw_gfxs_loop() {
     //bool widgets_active            = p_dispwidget->active;
     // TODO :Check if active
 
-   //video_driver_state_t *video_st = video_state_get_ptr();     
+   video_driver_state_t *video_st = video_state_get_ptr();     
+   void *userdata                   = video_driver_get_ptr();
+   //void *userdata = VIDEO_DRIVER_GET_PTR_INTERNAL(video_st);
+   gfx_display_t *p_disp      = disp_get_ptr();
+   
    //unsigned video_width          = video_st->current_video.width;
    //unsigned video_width             = video_info->width;
    unsigned video_width             = p_dispwidget->last_video_width;
@@ -723,28 +727,25 @@ void lua_draw_gfxs_loop() {
    unsigned font_scale            = 1;
    unsigned font_size            = 12; 
    
-    video_driver_state_t *video_st = video_state_get_ptr();
-
-   void *userdata                   = video_driver_get_ptr();
-   //void *userdata = VIDEO_DRIVER_GET_PTR_INTERNAL(video_st);
-   gfx_display_t *p_disp      = disp_get_ptr();
-   
    font_data_impl_t font_data;
 
     for(int i=0; i<GUI_SHAPES_BUF_SIZE; i++) {
         
         gui_shape_t* curr_shape = &gui_shapes[i];
+        
+        // TODO: convert curr_shape->x,y to screen coords
 
         switch (curr_shape->type)
         {
             case SHAPE_UNUSED:
             {
-                continue;
+                //continue;
+                break;
             }
             
             case SHAPE_TEXT:
             {
-                if(*curr_shape->text == 0) // empty string
+                if(curr_shape->text == NULL || strlen(curr_shape->text) == 0) // empty string
                     continue;
 
                 // adjust font size
@@ -761,7 +762,6 @@ void lua_draw_gfxs_loop() {
                 }*/
                 // Get font metadata
                 //if ((glyph_width = font_driver_get_message_width(font_data->font, "a", 1, 1.0f)) > 0)
-
                
                 gfx_display_draw_text(
                     font_data.font,
@@ -776,7 +776,7 @@ void lua_draw_gfxs_loop() {
             
             case SHAPE_PIXELTEXT:
             {
-                if(*curr_shape->text == 0) // empty string
+                if(curr_shape->text == NULL || strlen(curr_shape->text) == 0) // empty string
                     continue;
 
                 gfx_widgets_draw_text(
@@ -801,6 +801,11 @@ void lua_draw_gfxs_loop() {
                 float alpha = (curr_shape->bg_color & 0xFF) / 255.0f; // extract alpha and normalize
                 float curr_quad_bg_color[16] = COLOR_HEX_TO_FLOAT(rgb, alpha);
                 
+                if(alpha == 0.0f) { // nothing to draw
+                    //RARCH_LOG("rect alpha is 0\n");
+                    continue;
+                }
+                
                 // TODO: handle the "line" color
         
                 gfx_display_draw_quad(
@@ -820,7 +825,7 @@ void lua_draw_gfxs_loop() {
 }
 
 
-uint32_t read_color_arg(lua_State *L, const int ARG_NO, const int DEFAULT_COLOR) {
+uint32_t read_color_arg(lua_State *L, const int ARG_NO, const uint32_t DEFAULT_COLOR) {
     if (lua_isnoneornil(L, ARG_NO))
     {
         // Argument is missing, using default value
@@ -836,8 +841,7 @@ uint32_t read_color_arg(lua_State *L, const int ARG_NO, const int DEFAULT_COLOR)
         uint8_t g = (i >> 8)  & 0xFF;
         uint8_t b = i & 0xFF;
 
-        if (a == 0)
-            RARCH_LOG("WARNING: passed alpha is 0\n");
+        //if (a == 0) RARCH_LOG("WARNING: passed alpha is 0\n");
 
         // reorder: RRGGBBAA
         return (r << 24) | (g << 16) | (b << 8) | a;
@@ -889,7 +893,7 @@ uint32_t read_color_arg(lua_State *L, const int ARG_NO, const int DEFAULT_COLOR)
                     return luaL_error(L,"invalid hex color length '%s'", color_str);
                 }
 
-                if (a==0) RARCH_LOG("WARNING: passed alpha is 0\n");
+                //if (a==0) RARCH_LOG("WARNING: passed alpha is 0\n");
                 return (r<<24)|(g<<16)|(b<<8)|a;
             }
             default:
@@ -898,10 +902,9 @@ uint32_t read_color_arg(lua_State *L, const int ARG_NO, const int DEFAULT_COLOR)
             }
         }
     }
-    else
-    {
-        return luaL_error(L, "invalid color arg type");
-    }
+    
+    // else
+    return luaL_error(L, "invalid color arg type");
 }
 
 
@@ -927,7 +930,10 @@ int gui_drawString(lua_State *L) {
     curr_shape->x = luaL_checkinteger(L, 1);
     curr_shape->y = luaL_checkinteger(L, 2);
     
-    if(curr_shape->text) free(curr_shape->text); // free prev string
+    if(curr_shape->text) { // free prev string
+        free(curr_shape->text);
+        curr_shape->text = NULL;
+    }
     curr_shape->text = strdup(luaL_checkstring(L, 3));
 
     curr_shape->color = read_color_arg(L, 4, 0xFFFFFFFF); // default white, fully opaque
@@ -959,10 +965,13 @@ int gui_drawRectangle(lua_State *L) {
     curr_shape->width = luaL_checkinteger(L, 3);
     curr_shape->height = luaL_checkinteger(L, 4);
     
-    if(curr_shape->text) free(curr_shape->text); // free prev string
+    if(curr_shape->text) { // free prev string
+        free(curr_shape->text);
+        curr_shape->text = NULL;
+    }
     
-    curr_shape->color = read_color_arg(L, 4, 0xFFFFFFFF); // default white, fully opaque
-    curr_shape->bg_color = read_color_arg(L, 5, 0x000000FF); // default black, fully opaque
+    curr_shape->color = read_color_arg(L, 5, 0xFFFFFFFF); // default white, fully opaque
+    curr_shape->bg_color = read_color_arg(L, 6, 0x000000FF); // default black, fully opaque
     
     // increase curr shape index
     gui_shapes_curr_index += 1;
@@ -977,64 +986,25 @@ int gui_drawRectangle(lua_State *L) {
 // Draws a single pixel at the given coordinates in the given color. Color is optional (if not specified it will be drawn black)
 // Luacolor must be a 32-bit number in the format 0xAARRGGBB;
 int gui_drawPixel(lua_State *L) {
-    if(using_hw_framebuffer()) 
-        return luaL_error(L, "cannot draw on hardware framebuffer");
+    // this is just a wrapper to gui_drawRectangle
 
     unsigned x = luaL_checkinteger(L, 1);
     unsigned y = luaL_checkinteger(L, 2);
-
-    uint32_t color = 0xFF000000; // default black, fully opaque
-    if (lua_gettop(L) >= 3 && lua_isnumber(L, 3))
-        color = (uint32_t)luaL_checkinteger(L, 3);
-
-    /* WIP
-    video_driver_state_t *video_st = video_state_get_ptr();    
-    //uintptr_t frame = video_driver_get_current_framebuffer();
-    uint32_t *frame = (uint32_t*)video_st->frame_cache_data;  // remove const
-    unsigned width  = video_st->frame_cache_width;  // 0?
-    unsigned height = video_st->frame_cache_height;  // 0?
-    size_t pitch    = video_st->frame_cache_pitch;
-
-    printf("%u\n", frame);
-    printf("%u %u\n", width, height);
+    uint32_t bg_color = read_color_arg(L, 3, 0xFFFFFFFF);
     
-    // Bounds-check
-    if (!frame || x >= width || y >= height) {
-        return luaL_error(L, "invalid coords or frame buffer");
-    }
+    lua_settop(L, 0);  // Clear stack completely
 
-    frame[y * width + x] = color;
-    */
+    // Push arguments for gui_drawRectangle
+    lua_pushinteger(L, x);        // x
+    lua_pushinteger(L, y);        // y
+    lua_pushinteger(L, 1);        // width  // TODO: need to adjust to screen size
+    lua_pushinteger(L, 1);        // height  // TODO: need to adjust to screen size
+    lua_pushnil(L);             // color = nil
+    lua_pushinteger(L, bg_color);    // default white, fully opaque
+
+    // Call rectangle drawer
+    gui_drawRectangle(L);
     
-    dispgfx_widget_t *p_dispwidget = dispwidget_get_ptr();
-    gfx_widget_font_data_t *font  = &p_dispwidget->gfx_widget_fonts.regular;
-   
-    bool widgets_active            = p_dispwidget->active;
-    // TODO :Check if active
-    
-    //unsigned width  = video_st->frame_cache_width;
-    //unsigned width  = video_st->width;
-    //unsigned height = video_st->frame_cache_height;
-    //unsigned height = video_st->height;
-   
-   //video_driver_state_t *video_st = video_state_get_ptr();     
-   //unsigned video_width          = video_st->current_video.width;
-   unsigned video_width             = p_dispwidget->last_video_width;
-   unsigned video_height            = p_dispwidget->last_video_height;
-   video_driver_get_size(&video_width, &video_height);
-   void *userdata                   = video_driver_get_ptr();
-   gfx_display_t *p_disp      = disp_get_ptr();
-      
-      gfx_display_draw_quad(
-            p_disp,
-            userdata,
-            video_width, video_height,
-            x, y,
-            100, 100,
-            video_width, video_height,
-            p_dispwidget->backdrop_orig,
-            NULL
-      );
     return 0;
 }
 #endif
@@ -1143,18 +1113,18 @@ static const struct luaL_Reg  guilib[] = {
     { "drawString" ,  gui_drawString },
     { "drawText" ,  gui_drawString },
     { "drawRectangle" ,  gui_drawRectangle },
-    //TODO: { "drawPixel" ,  gui_drawPixel },
+    { "drawPixel" ,  gui_drawPixel },
     { "clearGraphics" ,  gui_clearGraphics },
     { "cleartext" ,  gui_clearGraphics },
     //TODO: drawLine
     //TODO: drawImage
     //TODO: drawBox
-#endif
     // FCEUX-aliases
     { "text", gui_drawString },
     { "drawtext", gui_drawString },
-    { "getpixel", emu_getscreenpixel },
     { "setpixel", gui_drawPixel },
+#endif
+    { "getpixel", emu_getscreenpixel },
     //TODO: gui.parsecolor(color)
     { "savescreenshot", client_screenshot },
 	{NULL,NULL}
@@ -1270,7 +1240,6 @@ int safe_io_open(lua_State *L) {
 
 
 lua_State *co = NULL;
-char* lua_file = "";
         
 void lua_init() {
 
@@ -1324,7 +1293,7 @@ void lua_init() {
         lua_pushstring(L, "execute");
         lua_pushnil(L);
         lua_settable(L, -3);
-        // TODO: wrappers for : os.remove(filename), os.rename(old, new)
+        // TODO: safe wrappers for : os.remove(filename), os.rename(old, new)
     }
     lua_pop(L, 1);
 
@@ -1382,7 +1351,7 @@ void lua_loop() {
     if(status != LUA_YIELD && status != LUA_OK)
         return;  // error or nothing to execute
 
-    // maybe needed on mac?
+    // needed on latest lua versions?
     //int nres;
     //status = lua_resume(co, NULL, 0, &nres);
     //#else
