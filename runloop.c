@@ -3977,6 +3977,9 @@ static bool core_unload_game(void)
 #ifdef HAVE_MICROPHONE
    microphone_driver_stop();
 #endif
+#ifdef HAVE_LUA
+   lua_deinit();
+#endif
 
    return true;
 }
@@ -7724,9 +7727,6 @@ bool core_unserialize(retro_ctx_serialize_info_t *info)
 #endif
 #if HAVE_RUNAHEAD
    command_event(CMD_EVENT_PREEMPT_RESET_BUFFER, NULL);
-#endif
-#ifdef HAVE_LUA
-   lua_deinit();
 #endif
 
    return true;

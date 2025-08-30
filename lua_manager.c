@@ -25,7 +25,6 @@
 #include <string/stdstring.h>
 #include <retro_timers.h>
 #include <lrc_hash.h>
-#include <lrc_hash.h>
 
 #include <lua.h>
 #include <lualib.h>
@@ -162,6 +161,66 @@ int client_ispaused(lua_State *L) {
     lua_pushboolean(L, r);
     return 1;
 }
+
+// bool bizstring.contains(string str, string str2)
+// Returns whether or not str contains str2
+int bizstring_contains(lua_State *L) {
+    const char *str = luaL_checkstring(L, 1);
+    const char *str2 = luaL_checkstring(L, 2);
+    if ( string_find_index_substring_string( str2, str ) == -1 )
+        lua_pushboolean(L, false);
+    else
+        lua_pushboolean(L, true);   
+    return 1;
+}
+
+// bool bizstring.endswith(string str, string str2)
+// Returns whether str ends wth str2 (case-sensitive)
+int bizstring_endswith(lua_State *L) {
+    const char *str = luaL_checkstring(L, 1);
+    const char *str2 = luaL_checkstring(L, 2);
+    bool r = string_ends_with(str, str2);
+    lua_pushboolean(L, r);
+    return 1;
+}
+
+// bool bizstring.startswith(string str, string str2)
+// Returns whether str starts with str2
+int bizstring_startswith(lua_State *L) {
+    const char *str = luaL_checkstring(L, 1);
+    const char *str2 = luaL_checkstring(L, 2);
+    bool r = string_starts_with(str, str2);
+    lua_pushboolean(L, r);
+    return 1;
+}
+
+// string bizstring.tolower(string str)
+// Returns an lowercase version of the given string
+int bizstring_tolower(lua_State *L) {
+    const char *str = luaL_checkstring(L, 1);
+    string_to_lower(str);
+    lua_pushstring(L, str);
+    return 1;
+}
+
+// string bizstring.toupper(string str)
+// Returns an uppercase version of the given string
+int bizstring_toupper(lua_State *L) {
+    const char *str = luaL_checkstring(L, 1);
+    string_to_upper(str);
+    lua_pushstring(L, str);
+    return 1;
+}
+
+// string bizstring.trim(string str)
+// returns a string that trims whitespace on the left and right ends of the string
+int bizstring_trim(lua_State *L) {
+    const char *str = luaL_checkstring(L, 1);
+    string_trim_whitespace(str);
+    lua_pushstring(L, str);
+    return 1;
+} 
+    
 
 // bool client.emulating()
 // Returns true if emulator is paused, otherwise, false
@@ -413,13 +472,15 @@ bool using_hw_framebuffer() {
 
 
 size_t get_memory_address_arg(lua_State *L, const int BYTES_TO_READ, const unsigned int domain) {    
-    const unsigned int address = (unsigned int)luaL_checkinteger(L, 1);
+    size_t address = (size_t)luaL_checkinteger(L, 1);
     
     // check if the address is valid for the current core
     runloop_state_t *runloop_st = runloop_state_get_ptr(); 
     const size_t memsize = runloop_st->current_core.retro_get_memory_size(domain);
-    if((address + BYTES_TO_READ - 1) > memsize)
+    if((address + BYTES_TO_READ - 1) > memsize) {
+        RARCH_LOG("address out of bounds: %d > %d\n", address, memsize );
         return luaL_error(L, "address out of bounds");
+    }
     // else 
     return address;
 }
@@ -538,12 +599,15 @@ int memory_hash_region(lua_State *L) {
     const unsigned int domain = get_memory_domain_arg(L, 3);
     unsigned length = (unsigned)luaL_checkinteger(L, 2);
     const size_t address = get_memory_address_arg(L, length, domain);
+
+    
     const uint8_t *data = runloop_state_get_ptr()->current_core.retro_get_memory_data(domain);  
     if (!data) return luaL_error(L, "unable to access memory");
     // else
     
     char out_hash[256] = {0};
     sha256_hash(out_hash, data+address, length);
+    string_to_upper(out_hash);
     lua_pushstring(L, out_hash);
     return 1;
 }
@@ -569,26 +633,26 @@ int emu_framecount(lua_State *L) {
 int emu_getsystemid(lua_State *L) {
     core_info_t *core_info      = NULL;
     core_info_get_current_core(&core_info);
-    char* sysid = NULL;
-    sysid = core_info->system_id;
+    char* sysid = core_info->system_id;  // read only, could be NULL
     if(sysid) {
-        // try to match Bizhawk names
-        if (strncmp(sysid, "super_nes", strlen(sysid)) == 0) sysid = "SNES" ;
-        if (strncmp(sysid, "mega_drive", strlen(sysid)) == 0) sysid = "GEN" ;
-        if (strncmp(sysid, "master_system", strlen(sysid)) == 0) sysid = "SMS" ;
-        if (strncmp(sysid, "game_boy", strlen(sysid)) == 0) sysid = "GB" ;
-        if (strncmp(sysid, "game_boy_advance", strlen(sysid)) == 0) sysid = "GBA" ;
-        if (strncmp(sysid, "pc_engine", strlen(sysid)) == 0) sysid = "PCE" ;
-        if (strncmp(sysid, "sega_saturn", strlen(sysid)) == 0) sysid = "SAT" ;
-        if (strncmp(sysid, "playstation", strlen(sysid)) == 0) sysid = "PSX" ;
-        if (strncmp(sysid, "commodore_64", strlen(sysid)) == 0) sysid = "C64" ;
-        if (strncmp(sysid, "nintendo_64", strlen(sysid)) == 0) sysid = "N64" ;
-        if (strncmp(sysid, "virtual_boy", strlen(sysid)) == 0) sysid = "VB" ;
-        if (strncmp(sysid, "wonderswan", strlen(sysid)) == 0) sysid = "WSWAN" ;
-        if (strncmp(sysid, "neo_geo_pocket", strlen(sysid)) == 0) sysid = "NGP" ;
-        // TODO: more matches
+        sysid = strdup(sysid);  // TODO: never freed
         // make sure it is in uppercase ("nes"->"NES")
         string_to_upper(sysid);
+        // try to match Bizhawk names
+        if (string_is_equal(sysid, "super_nes")) sysid = "SNES";
+        if (string_is_equal(sysid, "mega_drive")) sysid = "GEN";
+        if (string_is_equal(sysid, "master_system")) sysid = "SMS";
+        if (string_is_equal(sysid, "game_boy")) sysid = "GB";
+        if (string_is_equal(sysid, "game_boy_advance")) sysid = "GBA";
+        if (string_is_equal(sysid, "pc_engine")) sysid = "PCE";
+        if (string_is_equal(sysid, "sega_saturn")) sysid = "SAT";
+        if (string_is_equal(sysid, "playstation")) sysid = "PSX";
+        if (string_is_equal(sysid, "commodore_64")) sysid = "C64";
+        if (string_is_equal(sysid, "nintendo_64")) sysid = "N64";
+        if (string_is_equal(sysid, "virtual_boy")) sysid = "VB";
+        if (string_is_equal(sysid, "wonderswan")) sysid = "WSWAN";
+        if (string_is_equal(sysid, "neo_geo_pocket")) sysid = "NGP";
+        // TODO: more matches
     }
     lua_pushstring(L, sysid ? sysid : "");
     return 1;
@@ -689,15 +753,40 @@ typedef struct gui_shape
 gui_shape_t gui_shapes[50] = {0};  // static memory buffer of shapes currently onscreen
 
 const int GUI_SHAPES_BUF_SIZE = (sizeof(gui_shapes) / sizeof(gui_shapes[0]));
-int gui_shapes_curr_index = 0;
+unsigned gui_shapes_curr_index = 0;
 
 
 // void gui.clearGraphics([string surfacename = nil])
 // clears all lua drawn graphics from the screen
 int gui_clearGraphics(lua_State *L) {
+    gui_shapes_curr_index = 0;  // reset the index
     for(int i=0; i<GUI_SHAPES_BUF_SIZE; i++)
         gui_shapes[i].type = SHAPE_UNUSED;  // set as unused
     return 0; 
+}
+
+
+// client.transform_point( 32, 100 )
+// Transforms a point (x, y) in emulator space to a point in client space
+unsigned convert_to_screen_space(unsigned x, unsigned y, unsigned video_width, unsigned video_height, unsigned buffer_width, unsigned buffer_height, float aspect_ratio)
+{
+    unsigned r = 0;
+    //unsigned padding = 3;
+   
+   if(x) {
+       // convert and return x coord
+       r = (x * video_width) / buffer_width;
+   }
+   
+   if(y) {
+       // convert and return y coord
+       r = (y * video_height) / buffer_height;
+   }
+   
+   //r += padding;
+   
+   // else either x or y was 0
+   return r;
 }
 
 
@@ -710,42 +799,46 @@ void lua_draw_gfxs_loop() {
 
     dispgfx_widget_t *p_dispwidget = dispwidget_get_ptr();
     void *font  = &p_dispwidget->gfx_widget_fonts.regular.font;
-    if (!font) puts("empty font data");
+    //if (!font) puts("empty font data");
 
     //bool widgets_active            = p_dispwidget->active;
     // TODO :Check if active
 
-   video_driver_state_t *video_st = video_state_get_ptr();     
-   void *userdata                   = video_driver_get_ptr();
-   //void *userdata = VIDEO_DRIVER_GET_PTR_INTERNAL(video_st);
-   gfx_display_t *p_disp      = disp_get_ptr();
+    video_driver_state_t *video_st = video_state_get_ptr();     
+    void *userdata                   = video_driver_get_ptr();
+    //void *userdata = VIDEO_DRIVER_GET_PTR_INTERNAL(video_st);
+    gfx_display_t *p_disp      = disp_get_ptr();
    
-   //unsigned video_width          = video_st->current_video.width;
-   //unsigned video_width             = video_info->width;
-   unsigned video_width             = p_dispwidget->last_video_width;
-   unsigned video_height            = p_dispwidget->last_video_height;
-   unsigned font_scale            = 1;
-   unsigned font_size            = 12; 
+    unsigned video_width;  // video_st->width;
+    unsigned video_height;  // video_st->height;
+    video_driver_get_size(&video_width, &video_height);
    
-   font_data_impl_t font_data;
+    unsigned buffer_width = video_st->av_info.geometry.base_width;
+    unsigned buffer_height = video_st->av_info.geometry.base_height;
+    
+    float aspect_ratio = video_driver_get_aspect_ratio();
+
+    unsigned font_scale            = 1;
+    unsigned font_size            = 12; 
+   
+    font_data_impl_t font_data;
 
     for(int i=0; i<GUI_SHAPES_BUF_SIZE; i++) {
         
         gui_shape_t* curr_shape = &gui_shapes[i];
         
-        // TODO: convert curr_shape->x,y to screen coords
-
         switch (curr_shape->type)
         {
             case SHAPE_UNUSED:
             {
                 //continue;
-                break;
+                //break;                
+                return;  // fastest
             }
             
             case SHAPE_TEXT:
             {
-                if(curr_shape->text == NULL || strlen(curr_shape->text) == 0) // empty string
+                if(string_is_empty(curr_shape->text)) // empty string
                     continue;
 
                 // adjust font size
@@ -766,7 +859,8 @@ void lua_draw_gfxs_loop() {
                 gfx_display_draw_text(
                     font_data.font,
                     curr_shape->text,
-                    curr_shape->x, curr_shape->y,
+                    convert_to_screen_space(curr_shape->x, 0, video_width, video_height, buffer_width, buffer_height, aspect_ratio),
+                    convert_to_screen_space(0, curr_shape->y, video_width, video_height, buffer_width, buffer_height, aspect_ratio),
                     video_width, video_height,
                     curr_shape->color,
                     TEXT_ALIGN_LEFT,
@@ -776,13 +870,14 @@ void lua_draw_gfxs_loop() {
             
             case SHAPE_PIXELTEXT:
             {
-                if(curr_shape->text == NULL || strlen(curr_shape->text) == 0) // empty string
+                if(string_is_empty(curr_shape->text)) // empty string
                     continue;
 
                 gfx_widgets_draw_text(
                      font,
                      curr_shape->text,
-                     curr_shape->x, curr_shape->y,
+                     convert_to_screen_space(curr_shape->x, 0, video_width, video_height, buffer_width, buffer_height, aspect_ratio),
+                     convert_to_screen_space(0, curr_shape->y, video_width, video_height, buffer_width, buffer_height, aspect_ratio),
                      video_width, video_height,
                      curr_shape->color,
                      TEXT_ALIGN_LEFT,
@@ -812,8 +907,10 @@ void lua_draw_gfxs_loop() {
                      p_disp,
                      userdata,
                      video_width, video_height,
-                     curr_shape->x, curr_shape->y,
-                     curr_shape->width, curr_shape->height,
+                     convert_to_screen_space(curr_shape->x, 0, video_width, video_height, buffer_width, buffer_height, aspect_ratio),
+                     convert_to_screen_space(0, curr_shape->y, video_width, video_height, buffer_width, buffer_height, aspect_ratio),
+                     convert_to_screen_space(curr_shape->width, 0, video_width, video_height, buffer_width, buffer_height, aspect_ratio),
+                     convert_to_screen_space(0, curr_shape->height, video_width, video_height, buffer_width, buffer_height, aspect_ratio),
                      video_width, video_height,
                      curr_quad_bg_color,
                      NULL);
@@ -908,11 +1005,6 @@ uint32_t read_color_arg(lua_State *L, const int ARG_NO, const uint32_t DEFAULT_C
 }
 
 
-/* TODO:
-client.transform_point( 32, 100 )
-		Transforms a point (x, y) in emulator space to a point in client space
-  */
-        
         
 // void gui.drawString(int x, int y, string message, [luacolor forecolor = nil], [luacolor backcolor = nil], [int? fontsize = nil], [string fontfamily = nil]
 //      , [string fontstyle = nil], [string horizalign = nil], [string vertalign = nil], [string surfacename = nil])
@@ -923,9 +1015,9 @@ int gui_drawString(lua_State *L) {
     
     gui_shape_t* curr_shape = &gui_shapes[gui_shapes_curr_index];
     
-    curr_shape->type = SHAPE_TEXT;
+    //curr_shape->type = SHAPE_TEXT;
     // TODO: detect if invoked as drawText
-    //curr_shape->type = SHAPE_PIXELTEXT;
+    curr_shape->type = SHAPE_PIXELTEXT;
         
     curr_shape->x = luaL_checkinteger(L, 1);
     curr_shape->y = luaL_checkinteger(L, 2);
@@ -941,6 +1033,12 @@ int gui_drawString(lua_State *L) {
     
     curr_shape->font_size = luaL_optinteger(L, 6, 12);
     curr_shape->font_face = luaL_optstring(L, 7, "");
+    
+    // adjust y coord padding?
+    //unsigned widget_padding = dispwidget_get_ptr()->simple_widget_padding;
+    //curr_shape->y += widget_padding;
+    //curr_shape->y += (curr_shape->font_size);
+    curr_shape->y += 8;  // TODO: find the source
     
     // increase curr shape index
     gui_shapes_curr_index += 1;
@@ -1127,6 +1225,7 @@ static const struct luaL_Reg  guilib[] = {
     { "getpixel", emu_getscreenpixel },
     //TODO: gui.parsecolor(color)
     { "savescreenshot", client_screenshot },
+    { "savescreenshotas", client_screenshot },
 	{NULL,NULL}
 };
 
@@ -1204,6 +1303,18 @@ static const struct luaL_Reg  savestatelib[] = {
     { "saveslot", savestate_saveslot },   
     { "save", savestate_save },   
     { "load", savestate_load },   
+	{NULL,NULL}
+};
+
+
+static const struct luaL_Reg  bizstringlib[] = {
+    { "contains", bizstring_contains },
+    { "endswith", bizstring_endswith },
+    { "startswith", bizstring_startswith },
+    { "tolower", bizstring_tolower },
+    { "toupper", bizstring_toupper },
+    { "trim", bizstring_trim },
+    //TODO: more functions
 	{NULL,NULL}
 };
 
@@ -1328,7 +1439,10 @@ void lua_init() {
     lua_setglobal(L, "comm");
     luaL_newlib(L, savestatelib);
     lua_setglobal(L, "savestate");
-    //TODO: lua_register(L, "movie", movielib);    
+    luaL_newlib(L, bizstringlib);
+    lua_setglobal(L, "bizstring");
+    //TODO: lua_register(L, "bit", bitlib);
+    
     lua_settop(L, 0); // clean the stack, because each call to lua_register leaves a table on top
 
     // Create a coroutine (needed to yield)
@@ -1351,7 +1465,8 @@ void lua_loop() {
     if(status != LUA_YIELD && status != LUA_OK)
         return;  // error or nothing to execute
 
-    // needed on latest lua versions?
+    // needed on some lua versions?
+    //if LUA_VERSION_NUM == 502
     //int nres;
     //status = lua_resume(co, NULL, 0, &nres);
     //#else
