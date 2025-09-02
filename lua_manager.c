@@ -197,7 +197,7 @@ int bizstring_startswith(lua_State *L) {
 // string bizstring.tolower(string str)
 // Returns an lowercase version of the given string
 int bizstring_tolower(lua_State *L) {
-    const char *str = luaL_checkstring(L, 1);
+    char *str = luaL_checkstring(L, 1);
     string_to_lower(str);
     lua_pushstring(L, str);
     return 1;
@@ -206,7 +206,7 @@ int bizstring_tolower(lua_State *L) {
 // string bizstring.toupper(string str)
 // Returns an uppercase version of the given string
 int bizstring_toupper(lua_State *L) {
-    const char *str = luaL_checkstring(L, 1);
+    char *str = luaL_checkstring(L, 1);
     string_to_upper(str);
     lua_pushstring(L, str);
     return 1;
@@ -478,7 +478,7 @@ size_t get_memory_address_arg(lua_State *L, const int BYTES_TO_READ, const unsig
     runloop_state_t *runloop_st = runloop_state_get_ptr(); 
     const size_t memsize = runloop_st->current_core.retro_get_memory_size(domain);
     if((address + BYTES_TO_READ - 1) > memsize) {
-        RARCH_LOG("address out of bounds: %d > %d\n", address, memsize );
+        //RARCH_ERR("address out of bounds: %d > %d\n", address, memsize );
         return luaL_error(L, "address out of bounds");
     }
     // else 
@@ -746,13 +746,12 @@ typedef struct gui_shape
     unsigned width;
     unsigned height;
     char *text;
-    unsigned font_size;
-    char * font_face;
+    font_data_t *font;
 } gui_shape_t;
 
-gui_shape_t gui_shapes[50] = {0};  // static memory buffer of shapes currently onscreen
+#define LUA_MAX_SHAPES_ONSCREEN 50
+gui_shape_t gui_shapes[ LUA_MAX_SHAPES_ONSCREEN ] = {0};  // static memory buffer of shapes currently onscreen
 
-const int GUI_SHAPES_BUF_SIZE = (sizeof(gui_shapes) / sizeof(gui_shapes[0]));
 unsigned gui_shapes_curr_index = 0;
 
 
@@ -760,7 +759,7 @@ unsigned gui_shapes_curr_index = 0;
 // clears all lua drawn graphics from the screen
 int gui_clearGraphics(lua_State *L) {
     gui_shapes_curr_index = 0;  // reset the index
-    for(int i=0; i<GUI_SHAPES_BUF_SIZE; i++)
+    for(int i=0; i<LUA_MAX_SHAPES_ONSCREEN; i++)
         gui_shapes[i].type = SHAPE_UNUSED;  // set as unused
     return 0; 
 }
@@ -768,14 +767,16 @@ int gui_clearGraphics(lua_State *L) {
 
 // client.transform_point( 32, 100 )
 // Transforms a point (x, y) in emulator space to a point in client space
+// TODO: handle screen scaling correctly
 unsigned convert_to_screen_space(unsigned x, unsigned y, unsigned video_width, unsigned video_height, unsigned buffer_width, unsigned buffer_height, float aspect_ratio)
 {
     unsigned r = 0;
     //unsigned padding = 3;
+    //const unsigned screen_padding_x   = dispwidget_get_ptr()->msg_queue_rect_start_x;
    
    if(x) {
        // convert and return x coord
-       r = (x * video_width) / buffer_width;
+       r = (x * video_width) / buffer_width; // * aspect_ratio;
    }
    
    if(y) {
@@ -796,14 +797,13 @@ void lua_draw_gfxs_loop() {
       bool menu_open = menu_state_get_ptr()->flags & MENU_ST_FLAG_ALIVE;
       if (menu_open) return;
 #endif
-
+    
     dispgfx_widget_t *p_dispwidget = dispwidget_get_ptr();
-    void *font  = &p_dispwidget->gfx_widget_fonts.regular.font;
     //if (!font) puts("empty font data");
 
     //bool widgets_active            = p_dispwidget->active;
     // TODO :Check if active
-
+    
     video_driver_state_t *video_st = video_state_get_ptr();     
     void *userdata                   = video_driver_get_ptr();
     //void *userdata = VIDEO_DRIVER_GET_PTR_INTERNAL(video_st);
@@ -813,17 +813,13 @@ void lua_draw_gfxs_loop() {
     unsigned video_height;  // video_st->height;
     video_driver_get_size(&video_width, &video_height);
    
-    unsigned buffer_width = video_st->av_info.geometry.base_width;
-    unsigned buffer_height = video_st->av_info.geometry.base_height;
+    const unsigned buffer_width = video_st->av_info.geometry.base_width;
+    const unsigned buffer_height = video_st->av_info.geometry.base_height;
     
-    float aspect_ratio = video_driver_get_aspect_ratio();
+    const float aspect_ratio = video_driver_get_aspect_ratio();
 
-    unsigned font_scale            = 1;
-    unsigned font_size            = 12; 
-   
-    font_data_impl_t font_data;
-
-    for(int i=0; i<GUI_SHAPES_BUF_SIZE; i++) {
+    // Iterate over the shapes to draw
+    for(int i=0; i<LUA_MAX_SHAPES_ONSCREEN; i++) {
         
         gui_shape_t* curr_shape = &gui_shapes[i];
         
@@ -841,23 +837,8 @@ void lua_draw_gfxs_loop() {
                 if(string_is_empty(curr_shape->text)) // empty string
                     continue;
 
-                // adjust font size
-                font_size = curr_shape->font_size;
-                font_data.line_height        = (int)(font_size + 0.5f);
-                font_data.glyph_width        = (int)((font_size * (3.0f / 4.0f)) + 0.5f);
-                                
-                // Load a custom font -- TODO: only if specified
-                /*
-                char font_path[PATH_MAX_LENGTH];
-                if (!(font_data.font = gfx_display_font_file(p_disp, "Vera.ttf", font_size, false))) {
-                  puts("cannot load font");
-                  return;
-                }*/
-                // Get font metadata
-                //if ((glyph_width = font_driver_get_message_width(font_data->font, "a", 1, 1.0f)) > 0)
-               
                 gfx_display_draw_text(
-                    font_data.font,
+                    curr_shape->font,
                     curr_shape->text,
                     convert_to_screen_space(curr_shape->x, 0, video_width, video_height, buffer_width, buffer_height, aspect_ratio),
                     convert_to_screen_space(0, curr_shape->y, video_width, video_height, buffer_width, buffer_height, aspect_ratio),
@@ -874,7 +855,7 @@ void lua_draw_gfxs_loop() {
                     continue;
 
                 gfx_widgets_draw_text(
-                     font,
+                     &p_dispwidget->gfx_widget_fonts.regular,  // fixed monospace font
                      curr_shape->text,
                      convert_to_screen_space(curr_shape->x, 0, video_width, video_height, buffer_width, buffer_height, aspect_ratio),
                      convert_to_screen_space(0, curr_shape->y, video_width, video_height, buffer_width, buffer_height, aspect_ratio),
@@ -1005,20 +986,17 @@ uint32_t read_color_arg(lua_State *L, const int ARG_NO, const uint32_t DEFAULT_C
 }
 
 
-        
-// void gui.drawString(int x, int y, string message, [luacolor forecolor = nil], [luacolor backcolor = nil], [int? fontsize = nil], [string fontfamily = nil]
-//      , [string fontstyle = nil], [string horizalign = nil], [string vertalign = nil], [string surfacename = nil])
-// Draws the given message in the emulator screen space (like all draw functions) at the given x,y coordinates and the given color. The default color is white. A fontfamily can be specified and is monospace generic if none is specified (font family options are the same as the .NET FontFamily class). The fontsize default is 12. The default font style is regular. Font style options are regular, bold, italic, strikethrough, underline. Horizontal alignment options are left (default), center, or right. Vertical alignment options are bottom (default), middle, or top. Alignment options specify which ends of the text will be drawn at the x and y coordinates. For pixel-perfect font look, make sure to disable aspect ratio correction.
-int gui_drawString(lua_State *L) {
+// void gui.pixelText(int x, int y, string message, [luacolor forecolor = nil], [luacolor backcolor = nil], [string fontfamily = nil], [string surfacename = nil])
+// Draws the given message in the emulator screen space (like all draw functions) at the given x,y coordinates and the given color. The default color is white. Two font families are available, "fceux" and "gens" (or "0" and "1" respectively), both are monospace and have the same size as in the emulators they've been taken from.
+// NOTE: multiple strings can be onscreen at a time. The origin 0,0 i a bit shifted
+int gui_drawPixelText(lua_State *L) {
     if(using_hw_framebuffer()) 
         return luaL_error(L, "cannot draw on hardware framebuffer");
     
     gui_shape_t* curr_shape = &gui_shapes[gui_shapes_curr_index];
     
-    //curr_shape->type = SHAPE_TEXT;
-    // TODO: detect if invoked as drawText
     curr_shape->type = SHAPE_PIXELTEXT;
-        
+    
     curr_shape->x = luaL_checkinteger(L, 1);
     curr_shape->y = luaL_checkinteger(L, 2);
     
@@ -1031,8 +1009,63 @@ int gui_drawString(lua_State *L) {
     curr_shape->color = read_color_arg(L, 4, 0xFFFFFFFF); // default white, fully opaque
     curr_shape->bg_color = read_color_arg(L, 5, 0x000000FF); // default black, fully opaque
     
-    curr_shape->font_size = luaL_optinteger(L, 6, 12);
-    curr_shape->font_face = luaL_optstring(L, 7, "");
+    //curr_shape->font_face = luaL_optstring(L, 6, "");  // unused
+    
+    // increase curr shape index
+    gui_shapes_curr_index += 1;
+    if( gui_shapes_curr_index == LUA_MAX_SHAPES_ONSCREEN) 
+        gui_shapes_curr_index = 0;  // cycle back to 0
+
+    return 0;
+}
+
+      
+// void gui.drawString(int x, int y, string message, [luacolor forecolor = nil], [luacolor backcolor = nil], [int? fontsize = nil], [string fontfamily = nil]
+//      , [string fontstyle = nil], [string horizalign = nil], [string vertalign = nil], [string surfacename = nil])
+// Draws the given message in the emulator screen space (like all draw functions) at the given x,y coordinates and the given color. The default color is white. A fontfamily can be specified and is monospace generic if none is specified (font family options are the same as the .NET FontFamily class). The fontsize default is 12. The default font style is regular. Font style options are regular, bold, italic, strikethrough, underline. Horizontal alignment options are left (default), center, or right. Vertical alignment options are bottom (default), middle, or top. Alignment options specify which ends of the text will be drawn at the x and y coordinates. For pixel-perfect font look, make sure to disable aspect ratio correction.
+int gui_drawString(lua_State *L) {
+    if(using_hw_framebuffer()) 
+        return luaL_error(L, "cannot draw on hardware framebuffer");
+    
+    gui_shape_t* curr_shape = &gui_shapes[gui_shapes_curr_index];
+    
+    curr_shape->type = SHAPE_TEXT;
+        
+    curr_shape->x = luaL_checkinteger(L, 1);
+    curr_shape->y = luaL_checkinteger(L, 2);
+    
+    if(curr_shape->text) { // free prev string
+        free(curr_shape->text);
+        curr_shape->text = NULL;
+    }
+    curr_shape->text = strdup(luaL_checkstring(L, 3));
+
+    curr_shape->color = read_color_arg(L, 4, 0xFFFFFFFF); // default white, fully opaque
+    curr_shape->bg_color = read_color_arg(L, 5, 0x000000FF); // default black, fully opaque
+     
+    // default font
+    //dispgfx_widget_t *p_dispwidget = dispwidget_get_ptr();
+    //curr_shape->font = &p_dispwidget->gfx_widget_fonts.regular.font;
+    curr_shape->font = NULL;
+
+    // apply font and scaling
+    float font_size = luaL_optinteger(L, 6, 12);
+    char* font_face = luaL_optstring(L, 7, "");
+    if(curr_shape->font) {
+        free(curr_shape->font);
+        curr_shape->font = NULL;
+    }
+    // TODO: font size dpi-aware
+    /*
+    video_driver_state_t *video_st = video_state_get_ptr();
+    menu_handle_t *menu  = menu_state_get_ptr()->driver_data;
+    float dpi = menu_input_get_dpi(menu, disp_get_ptr(), video_st->width, video_st->height);
+    RARCH_LOG("detected dpi: %f\n", dpi);
+    float scaled_size             = p_dispwidget->last_scale_factor;
+    RARCH_LOG("detected scale factor: %f\n", scaled_size);
+    */
+    curr_shape->font = gfx_display_font_file(disp_get_ptr(), font_face, font_size, false);
+    if(curr_shape->font == NULL) RARCH_ERR("cannot load font: %s", font_face);
     
     // adjust y coord padding?
     //unsigned widget_padding = dispwidget_get_ptr()->simple_widget_padding;
@@ -1042,7 +1075,7 @@ int gui_drawString(lua_State *L) {
     
     // increase curr shape index
     gui_shapes_curr_index += 1;
-    if( gui_shapes_curr_index == GUI_SHAPES_BUF_SIZE) 
+    if( gui_shapes_curr_index == LUA_MAX_SHAPES_ONSCREEN) 
         gui_shapes_curr_index = 0;  // cycle back to 0
 
     return 0;
@@ -1073,7 +1106,7 @@ int gui_drawRectangle(lua_State *L) {
     
     // increase curr shape index
     gui_shapes_curr_index += 1;
-    if( gui_shapes_curr_index == GUI_SHAPES_BUF_SIZE) 
+    if( gui_shapes_curr_index == LUA_MAX_SHAPES_ONSCREEN) 
         gui_shapes_curr_index = 0;  // cycle back to 0
 
     return 0;
@@ -1210,6 +1243,8 @@ static const struct luaL_Reg  guilib[] = {
 #ifdef HAVE_GFX_WIDGETS
     { "drawString" ,  gui_drawString },
     { "drawText" ,  gui_drawString },
+    { "pixelText" ,  gui_drawPixelText },
+    { "text" ,  gui_drawPixelText },
     { "drawRectangle" ,  gui_drawRectangle },
     { "drawPixel" ,  gui_drawPixel },
     { "clearGraphics" ,  gui_clearGraphics },
@@ -1274,6 +1309,7 @@ static const struct luaL_Reg  memorylib [] = {
     { "readword" ,  memory_read_u16_le },
     //TODO: { "readfloat" ,  memory_readfloat },
     //TODO: { "writebyterange" ,  memory_writebyterange },
+    //TODO: { "write_bytes_as_array" ,  memory_write_bytes_as_array },
 	{NULL,NULL}
 };
 
