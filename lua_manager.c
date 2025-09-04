@@ -49,6 +49,9 @@
 #include "menu/menu_driver.h"
 #endif
 
+#define RETRO_MEMORY_ROM   9
+// TBA in libretro.h?
+
 
 // LUA API based on Bizhawk https://tasvideos.org/Bizhawk/LuaFunctions
 
@@ -87,29 +90,6 @@ int gameinfo_getrompath(lua_State *L) {
     const char *path = path_get(RARCH_PATH_CONTENT);
     const char *r = path ? path : "";  // fallback to empty string
     lua_pushfstring(L, "%s", r);
-    return 1;
-}
-
-// rom.readbyte(int address)
-// Get an unsigned byte from the actual ROM file at the given address.  
-// TODO: handle content with multiple entries?
-int rom_readbyte(lua_State *L) {
-    size_t addr = luaL_checkinteger(L, 1);
-
-    content_state_t *p_content = content_state_get_ptr();
-    if (!p_content || !p_content->content_list || p_content->content_list->size == 0)
-        return luaL_error(L, "Content is not loaded in RAM");
-        
-    void* rom_data = p_content->content_list->entries[0].data;
-    size_t rom_data_size = p_content->content_list->entries[0].data_size;
-    if(!rom_data || !rom_data_size)
-        return luaL_error(L, "Content is not loaded in RAM");
-    
-    if (addr >= rom_data_size)
-        return luaL_error(L, "Address %d out of range (0 .. %zu)", (int)addr, rom_data_size - 1);
-
-    const uint8_t *rom = (const uint8_t *)rom_data;
-    lua_pushinteger(L, rom[addr]);     
     return 1;
 }
 
@@ -364,6 +344,9 @@ int client_getconfig(lua_State *L) {
     lua_pushinteger(L, settings->ints.state_slot);
     lua_setfield(L, -2, "SaveSlot");
 
+    //lua_pushnumber(L, settings->floats.video_font_size);
+    //lua_setfield(L, -2, "FontSize");
+    
     // TODO: more settings
     /*
     // Set another field, e.g., PauseOnFrame = true
@@ -463,20 +446,37 @@ int input_get(lua_State *L) {
 
 
 bool using_hw_framebuffer() {
+    /*
     video_driver_state_t *video_st = video_state_get_ptr();  
     if(video_st->frame_cache_data && (video_st->frame_cache_data == RETRO_HW_FRAME_BUFFER_VALID))
         return true;
     else
         return false;
+        */
+
+    // ALT from video_driver.h: video_driver_is_hw_context()
+    //bool is_hw_context  = (video_st->hw_render.context_type != RETRO_HW_CONTEXT_NONE);
+    //return is_hw_context;
+    return video_driver_is_hw_context();  // TODO: replace all calls?
 }
 
 
 size_t get_memory_address_arg(lua_State *L, const int BYTES_TO_READ, const unsigned int domain) {    
     size_t address = (size_t)luaL_checkinteger(L, 1);
+    size_t memsize;
     
     // check if the address is valid for the current core
-    runloop_state_t *runloop_st = runloop_state_get_ptr(); 
-    const size_t memsize = runloop_st->current_core.retro_get_memory_size(domain);
+    if(domain == RETRO_MEMORY_ROM)
+    {
+        content_state_t *p_content = content_state_get_ptr();
+        if (!p_content || !p_content->content_list || p_content->content_list->size == 0)
+            return luaL_error(L, "Content is not loaded in RAM");
+        memsize = p_content->content_list->entries[0].data_size;
+    } else {  // other domains
+        runloop_state_t *runloop_st = runloop_state_get_ptr(); 
+        memsize = runloop_st->current_core.retro_get_memory_size(domain);
+    }
+    
     if((address + BYTES_TO_READ - 1) > memsize) {
         //RARCH_ERR("address out of bounds: %d > %d\n", address, memsize );
         return luaL_error(L, "address out of bounds");
@@ -484,7 +484,6 @@ size_t get_memory_address_arg(lua_State *L, const int BYTES_TO_READ, const unsig
     // else 
     return address;
 }
-
 
 unsigned int get_memory_domain_arg(lua_State *L, const int DOMAIN_ARG_POS) {
     unsigned int domain = RETRO_MEMORY_SYSTEM_RAM;  // default
@@ -496,6 +495,9 @@ unsigned int get_memory_domain_arg(lua_State *L, const int DOMAIN_ARG_POS) {
                 // only vram domain is supported by now
                 domain = RETRO_MEMORY_VIDEO_RAM;
             }
+            else if(strcasestr(domain_str, "rom") != NULL) {  // case-insensitive substring check
+                domain = RETRO_MEMORY_ROM;
+            }
             // TODO: add more memory domains
     }
     if(domain == RETRO_MEMORY_VIDEO_RAM && using_hw_framebuffer()) {
@@ -505,9 +507,16 @@ unsigned int get_memory_domain_arg(lua_State *L, const int DOMAIN_ARG_POS) {
 }
 
 int get_memory_value(lua_State *L, const int BYTES_TO_READ, bool with_sign, bool big_endian) {
-    const unsigned int domain = get_memory_domain_arg(L, 2);
-    const size_t address = get_memory_address_arg(L, BYTES_TO_READ, domain);    
-    const uint8_t *data = (const uint8_t *) runloop_state_get_ptr()->current_core.retro_get_memory_data(domain);
+    unsigned int domain = get_memory_domain_arg(L, 2);
+    size_t address;
+    uint8_t *data;
+    if(domain == RETRO_MEMORY_ROM) {
+        address = get_memory_address_arg(L, BYTES_TO_READ, domain);    
+        data = (uint8_t *) content_state_get_ptr()->content_list->entries[0].data;
+    } else {  // other domains
+        address = get_memory_address_arg(L, BYTES_TO_READ, domain);    
+        data = (uint8_t *) runloop_state_get_ptr()->current_core.retro_get_memory_data(domain);
+    }
     if (!data) return luaL_error(L, "unable to access memory");
     
     int value;
@@ -557,6 +566,14 @@ int memory_read_s16_be(lua_State *L) {
     return get_memory_value(L, 2, true, true);
 }
 
+
+// rom.readbyte(int address)
+// Get an unsigned byte from the actual ROM file at the given address.  
+// TODO: handle content with multiple entries?
+int rom_readbyte(lua_State *L) {
+    lua_pushstring(L, "ROM");  // add domain arg
+    return get_memory_value(L, 1, false, false);
+}
 
 // void memory.writebyte(long addr, uint value, [string domain = nil])
 // Writes the given value to the given address as an unsigned byte
@@ -1044,26 +1061,36 @@ int gui_drawString(lua_State *L) {
     curr_shape->bg_color = read_color_arg(L, 5, 0x000000FF); // default black, fully opaque
      
     // default font
-    //dispgfx_widget_t *p_dispwidget = dispwidget_get_ptr();
-    //curr_shape->font = &p_dispwidget->gfx_widget_fonts.regular.font;
-    curr_shape->font = NULL;
+    dispgfx_widget_t *p_dispwidget = dispwidget_get_ptr();
 
     // apply font and scaling
-    float font_size = luaL_optinteger(L, 6, 12);
-    char* font_face = luaL_optstring(L, 7, "");
+    settings_t *settings            = config_get_ptr();
+    //float DEFAULT_FONT_SIZE = 12;
+    float DEFAULT_FONT_SIZE = 32.0f;  // BASE_FONT_SIZE as defined in gfx_widgets.c
+    //float DEFAULT_FONT_SIZE = settings->floats.video_font_size;
+    char* DEFAULT_FONT_FACE = settings->paths.path_font;
+    /*
+    if(string_is_empty(DEFAULT_FONT_FACE)) {         
+        //DEFAULT_FONT_FACE = p_dispwidget->ozone_regular_font_path;  // as defined in gfx_widgets.c
+        //DEFAULT_FONT_FACE = p_dispwidget->gfx_widget_fonts.regular.font;
+    }*/
+    //RARCH_LOG("path_font: %s\n", DEFAULT_FONT_FACE);
+    //RARCH_LOG("video_font_size: %f\n", settings->floats.video_font_size);
+    
+    float font_size = luaL_optinteger(L, 6, DEFAULT_FONT_SIZE);
+    char* font_face = luaL_optstring(L, 7, DEFAULT_FONT_FACE);
     if(curr_shape->font) {
         free(curr_shape->font);
         curr_shape->font = NULL;
     }
-    // TODO: font size dpi-aware
-    /*
-    video_driver_state_t *video_st = video_state_get_ptr();
-    menu_handle_t *menu  = menu_state_get_ptr()->driver_data;
-    float dpi = menu_input_get_dpi(menu, disp_get_ptr(), video_st->width, video_st->height);
-    RARCH_LOG("detected dpi: %f\n", dpi);
-    float scaled_size             = p_dispwidget->last_scale_factor;
-    RARCH_LOG("detected scale factor: %f\n", scaled_size);
-    */
+    
+    // font size dpi-aware
+    // MEMO: scale_factor = dpi / REFERENCE_DPI = dpi / 96.0f;
+    //float dpi_scale             = dispwidget_get_ptr()->last_scale_factor;
+    //RARCH_LOG("detected dpi: %f\n", dpi_scale);   
+    //menu_handle_t *menu  = menu_state_get_ptr()->driver_data;
+    //float dpi = menu_input_get_dpi(menu, disp_get_ptr(), video_st->width, video_st->height);
+    
     curr_shape->font = gfx_display_font_file(disp_get_ptr(), font_face, font_size, false);
     if(curr_shape->font == NULL) RARCH_ERR("cannot load font: %s", font_face);
     
@@ -1071,7 +1098,7 @@ int gui_drawString(lua_State *L) {
     //unsigned widget_padding = dispwidget_get_ptr()->simple_widget_padding;
     //curr_shape->y += widget_padding;
     //curr_shape->y += (curr_shape->font_size);
-    curr_shape->y += 8;  // TODO: find the source
+    curr_shape->y += DEFAULT_FONT_SIZE;
     
     // increase curr shape index
     gui_shapes_curr_index += 1;
@@ -1203,7 +1230,7 @@ static const struct luaL_Reg  gameinfolib[] = {
     //{ "getboardtype" , gameinfo_getboardtype },
     { "getromhash" , gameinfo_getromhash }, 
     { "getromname", gameinfo_getromname },
-    { "getrompath", gameinfo_getrompath },
+    { "getrompath", gameinfo_getrompath },  // retroarch-only
     //{ "getstatus" , gameinfo_getstatus },  // returns the game database status of the currently loaded rom. Statuses are for example: GoodDump, BadDump, Hack, Unknown, NotInDatabase
     //{ "indatabase", gameinfo_indatabase }, // returns whether or not the currently loaded rom is in the game database
     //{ "isstatusbad", gameinfo_isstatusbad }  // returns the currently loaded rom's game database status is considered 'bad'
