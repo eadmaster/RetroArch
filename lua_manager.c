@@ -753,6 +753,14 @@ enum gui_shape_type
    // TODO: line, circle, image, etc.
 };
 
+/* TODO: IMAGE
+            image_type = IMAGE_TYPE_PNG;
+
+         if (!gfx_widgets_ai_service_overlay_load(
+               raw_image_file_data, (unsigned)new_image_size,
+               image_type))
+*/
+
 typedef struct gui_shape
 {
     enum gui_shape_type type;
@@ -782,29 +790,79 @@ int gui_clearGraphics(lua_State *L) {
 }
 
 
-// client.transform_point( 32, 100 )
-// Transforms a point (x, y) in emulator space to a point in client space
-// TODO: handle screen scaling correctly
-unsigned convert_to_screen_space(unsigned x, unsigned y, unsigned video_width, unsigned video_height, unsigned buffer_width, unsigned buffer_height, float aspect_ratio)
+static unsigned convert_to_screen_space(unsigned x, unsigned y,
+                                        unsigned width, unsigned height )
 {
-    unsigned r = 0;
-    //unsigned padding = 3;
-    //const unsigned screen_padding_x   = dispwidget_get_ptr()->msg_queue_rect_start_x;
+    
+    struct video_viewport vp = {0};
+    video_driver_get_viewport_info(&vp);
+    //unsigned SCREEN_PADDING_X = 3;
+    //const unsigned SCREEN_PADDING_X   = dispwidget_get_ptr()->msg_queue_rect_start_x;
+    //const unsigned SCREEN_PADDING_X  = dispwidget_get_ptr()->simple_widget_padding;
+
+    video_driver_state_t *video_st = video_state_get_ptr();
+    unsigned fb_w = video_st->av_info.geometry.base_width;
+    unsigned fb_h = video_st->av_info.geometry.base_height;
+
+    //RARCH_LOG("screen: %u %u %u %u\n", buffer_width, buffer_height, fb_w, fb_h ) ; 
+    //RARCH_LOG("viewport: %u %u %u %u %u %u \n", vp->x , vp->y, vp->width , vp->height,vp->full_width, vp->full_height ) ; 
+
+/*
+   gfx_display_t *p_disp      = disp_get_ptr();
+      unsigned fb_width            = p_disp->framebuf_width;
+      unsigned fb_height           = p_disp->framebuf_height;
+  */
+          
+    if (x)
+        return vp.x + (unsigned)((float)x / fb_w * vp.width);
+    if (y)
+        return vp.y + (unsigned)((float)y / fb_h * vp.height);  // sy -= curr_shape->font->ascent
+    if (width)
+        return (unsigned)((float)width / fb_w * vp.width);
+    if (height)
+        return (unsigned)((float)height / fb_h * vp.height);
+
+    return 0;
+}
+
+
+// nluatable client.transformPoint(int x, int y)
+// Transforms a point (x, y) in emulator space to a point in client space
+int client_transformPoint(lua_State *L) {
+    int x = luaL_checkinteger(L, 1);
+    int y = luaL_checkinteger(L, 2);
+
+    unsigned video_width;  // video_st->width;
+    unsigned video_height;  // video_st->height;
+    video_driver_get_size(&video_width, &video_height);
    
-   if(x) {
-       // convert and return x coord
-       r = (x * video_width) / buffer_width; // * aspect_ratio;
-   }
-   
-   if(y) {
-       // convert and return y coord
-       r = (y * video_height) / buffer_height;
-   }
-   
-   //r += padding;
-   
-   // else either x or y was 0
-   return r;
+    video_driver_state_t *video_st = video_state_get_ptr();  
+    const unsigned buffer_width = video_st->av_info.geometry.base_width;
+    const unsigned buffer_height = video_st->av_info.geometry.base_height;
+    
+    //const float aspect_ratio = video_driver_get_aspect_ratio();
+    video_viewport_t vp = {0}; 
+    video_driver_get_viewport_info(&vp);
+    
+    // update coords
+    x = convert_to_screen_space(1+x, 0, 0, 0);
+    y = convert_to_screen_space(0, 1+y, 0, 0);
+    
+    // populate return table
+    lua_newtable(L);
+    
+    char coord[16];
+    snprintf(coord, sizeof(coord), "%d", x);
+    lua_pushstring(L, "x");
+    lua_pushstring(L, coord);
+    lua_settable(L, -3);
+    
+    snprintf(coord, sizeof(coord), "%d", y);
+    lua_pushstring(L, "y");
+    lua_pushstring(L, coord);
+    lua_settable(L, -3);
+
+    return 1;
 }
 
 
@@ -834,6 +892,9 @@ void lua_draw_gfxs_loop() {
     const unsigned buffer_height = video_st->av_info.geometry.base_height;
     
     const float aspect_ratio = video_driver_get_aspect_ratio();
+    
+    video_viewport_t vp = {0}; 
+    video_driver_get_viewport_info(&vp);
 
     // Iterate over the shapes to draw
     for(int i=0; i<LUA_MAX_SHAPES_ONSCREEN; i++) {
@@ -845,24 +906,27 @@ void lua_draw_gfxs_loop() {
             case SHAPE_UNUSED:
             {
                 //continue;
-                //break;                
-                return;  // fastest
+                //break;
+                return;  // fastest, but may skip some shapes if the buffer is full
             }
             
             case SHAPE_TEXT:
             {
                 if(string_is_empty(curr_shape->text)) // empty string
                     continue;
-
+         
+                // 2FIX: 1st call is not positioned properly?
+                
                 gfx_display_draw_text(
                     curr_shape->font,
                     curr_shape->text,
-                    convert_to_screen_space(curr_shape->x, 0, video_width, video_height, buffer_width, buffer_height, aspect_ratio),
-                    convert_to_screen_space(0, curr_shape->y, video_width, video_height, buffer_width, buffer_height, aspect_ratio),
-                    video_width, video_height,
+                    convert_to_screen_space(1+curr_shape->x, 0, 0, 0),
+                    convert_to_screen_space(0, 1+curr_shape->y, 0, 0), //  - (2 * curr_shape->font->size)
+                    vp.width, vp.height,
                     curr_shape->color,
                     TEXT_ALIGN_LEFT,
                     1.0f, false, 0.0f, true);
+                    
                 break;
             }
             
@@ -874,13 +938,13 @@ void lua_draw_gfxs_loop() {
                 gfx_widgets_draw_text(
                      &p_dispwidget->gfx_widget_fonts.regular,  // fixed monospace font
                      curr_shape->text,
-                     convert_to_screen_space(curr_shape->x, 0, video_width, video_height, buffer_width, buffer_height, aspect_ratio),
-                     convert_to_screen_space(0, curr_shape->y, video_width, video_height, buffer_width, buffer_height, aspect_ratio),
-                     video_width, video_height,
+                     convert_to_screen_space(1+curr_shape->x, 0, 0, 0),
+                     convert_to_screen_space(0, 1+curr_shape->y, 0, 0),
+                     vp.width, vp.height,
                      curr_shape->color,
                      TEXT_ALIGN_LEFT,
-                     true);
-                     
+                     true);  // draw_outside
+
                 break;
             }
             
@@ -905,11 +969,11 @@ void lua_draw_gfxs_loop() {
                      p_disp,
                      userdata,
                      video_width, video_height,
-                     convert_to_screen_space(curr_shape->x, 0, video_width, video_height, buffer_width, buffer_height, aspect_ratio),
-                     convert_to_screen_space(0, curr_shape->y, video_width, video_height, buffer_width, buffer_height, aspect_ratio),
-                     convert_to_screen_space(curr_shape->width, 0, video_width, video_height, buffer_width, buffer_height, aspect_ratio),
-                     convert_to_screen_space(0, curr_shape->height, video_width, video_height, buffer_width, buffer_height, aspect_ratio),
-                     video_width, video_height,
+                     convert_to_screen_space(1+curr_shape->x, 0, 0, 0),
+                     convert_to_screen_space(0, 1+curr_shape->y, 0, 0),
+                     convert_to_screen_space(0, 0, 1+curr_shape->width, 0),
+                     convert_to_screen_space(0, 0, 0, 1+curr_shape->height),
+                     vp.width, vp.height,
                      curr_quad_bg_color,
                      NULL);
                      
@@ -1061,18 +1125,18 @@ int gui_drawString(lua_State *L) {
     curr_shape->bg_color = read_color_arg(L, 5, 0x000000FF); // default black, fully opaque
      
     // default font
-    dispgfx_widget_t *p_dispwidget = dispwidget_get_ptr();
+    //dispgfx_widget_t *p_dispwidget = dispwidget_get_ptr();
 
     // apply font and scaling
     settings_t *settings            = config_get_ptr();
     //float DEFAULT_FONT_SIZE = 12;
-    float DEFAULT_FONT_SIZE = 32.0f;  // BASE_FONT_SIZE as defined in gfx_widgets.c
+    const float DEFAULT_FONT_SIZE = 32.0f;  // BASE_FONT_SIZE as defined in gfx_widgets.c
     //float DEFAULT_FONT_SIZE = settings->floats.video_font_size;
-    char* DEFAULT_FONT_FACE = settings->paths.path_font;
+    const char* DEFAULT_FONT_FACE = settings->paths.path_font;
     /*
     if(string_is_empty(DEFAULT_FONT_FACE)) {         
-        //DEFAULT_FONT_FACE = p_dispwidget->ozone_regular_font_path;  // as defined in gfx_widgets.c
-        //DEFAULT_FONT_FACE = p_dispwidget->gfx_widget_fonts.regular.font;
+        //DEFAULT_FONT_FACE = p_dispwidget->ozone_regular_font_path;  // sans-serif font, as defined in gfx_widgets.c
+        //DEFAULT_FONT_FACE = p_dispwidget->gfx_widget_fonts.regular.font;  // monospace font
     }*/
     //RARCH_LOG("path_font: %s\n", DEFAULT_FONT_FACE);
     //RARCH_LOG("video_font_size: %f\n", settings->floats.video_font_size);
@@ -1107,6 +1171,7 @@ int gui_drawString(lua_State *L) {
 
     return 0;
 }
+
 
 // void gui.drawRectangle(int x, int y, int width, int height, [luacolor line = nil], [luacolor background = nil], [string surfacename = nil])
 // Draws a rectangle at the given coordinate and the given width and height. Line is the color of the box. Background is the optional fill color
@@ -1261,6 +1326,7 @@ static const struct luaL_Reg  clientlib [] = {
     { "screenshot", client_screenshot },
     { "sleep" , client_sleep },  
     { "getconfig" , client_getconfig },  
+    { "transformPoint" , client_transformPoint },  
     // client.openrom(string path)  -> core_load_game
 	{NULL,NULL}
 };
@@ -1549,6 +1615,10 @@ void lua_loop() {
 
 void lua_deinit() {
     if (!co) return;  // init failed (no script file found)
+    
+    // clear all gfx shapes
+    gui_clearGraphics(NULL);
+    
     lua_close(co);
     co = NULL;
 }
