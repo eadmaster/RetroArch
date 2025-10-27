@@ -30,27 +30,44 @@
 
 #include "rmsgpack.h"
 
+/* For the simple stack-based reader state */
 #define MAX_DEPTH 128
 
-struct dom_reader_state
+struct rmsgpack_dom_reader_state
 {
    int i;
-   struct rmsgpack_dom_value *stack[MAX_DEPTH];
+   bool growable;
+   int capacity;
+   struct rmsgpack_dom_value **stack;
 };
 
-static struct rmsgpack_dom_value *dom_reader_state_pop(
-      struct dom_reader_state *s)
+static struct rmsgpack_dom_value *rmsgpack_dom_reader_state_pop(
+      struct rmsgpack_dom_reader_state *s)
 {
    struct rmsgpack_dom_value *v = s->stack[s->i];
    s->i--;
    return v;
 }
 
-static int dom_reader_state_push(
-      struct dom_reader_state *s, struct rmsgpack_dom_value *v)
+static int rmsgpack_dom_reader_state_push(
+      struct rmsgpack_dom_reader_state *s, struct rmsgpack_dom_value *v)
 {
-   if ((s->i + 1) == MAX_DEPTH)
-      return -1;
+   if ((s->i + 1) == s->capacity)
+   {
+      if(s->growable)
+      {
+         s->capacity *= 2;
+         s->stack = realloc(s->stack, s->capacity * sizeof(struct rmsgpack_dom_value *));
+         if(!s->stack)
+         {
+            printf("[RMSGPACK_DOM] failed to reallocate stack to %ld\n",
+                  s->capacity*sizeof(struct rmsgpack_dom_value *));
+            return -1;
+         }
+      }
+      else
+         return -1;
+   }
    s->i++;
    s->stack[s->i] = v;
    return 0;
@@ -58,18 +75,18 @@ static int dom_reader_state_push(
 
 static int dom_read_nil(void *data)
 {
-   struct dom_reader_state *dom_state = (struct dom_reader_state *)data;
+   struct rmsgpack_dom_reader_state *dom_state = (struct rmsgpack_dom_reader_state *)data;
    struct rmsgpack_dom_value *v       =
-      (struct rmsgpack_dom_value*)dom_reader_state_pop(dom_state);
+      (struct rmsgpack_dom_value*)rmsgpack_dom_reader_state_pop(dom_state);
    v->type                            = RDT_NULL;
    return 0;
 }
 
 static int dom_read_bool(int value, void *data)
 {
-   struct dom_reader_state *dom_state = (struct dom_reader_state *)data;
+   struct rmsgpack_dom_reader_state *dom_state = (struct rmsgpack_dom_reader_state *)data;
    struct rmsgpack_dom_value *v       =
-      (struct rmsgpack_dom_value*)dom_reader_state_pop(dom_state);
+      (struct rmsgpack_dom_value*)rmsgpack_dom_reader_state_pop(dom_state);
    v->type                            = RDT_BOOL;
    v->val.bool_                       = value;
    return 0;
@@ -77,9 +94,9 @@ static int dom_read_bool(int value, void *data)
 
 static int dom_read_int(int64_t value, void *data)
 {
-   struct dom_reader_state *dom_state = (struct dom_reader_state *)data;
+   struct rmsgpack_dom_reader_state *dom_state = (struct rmsgpack_dom_reader_state *)data;
    struct rmsgpack_dom_value *v       =
-      (struct rmsgpack_dom_value*)dom_reader_state_pop(dom_state);
+      (struct rmsgpack_dom_value*)rmsgpack_dom_reader_state_pop(dom_state);
    v->type                            = RDT_INT;
    v->val.int_                        = value;
    return 0;
@@ -87,9 +104,9 @@ static int dom_read_int(int64_t value, void *data)
 
 static int dom_read_uint(uint64_t value, void *data)
 {
-   struct dom_reader_state *dom_state = (struct dom_reader_state *)data;
+   struct rmsgpack_dom_reader_state *dom_state = (struct rmsgpack_dom_reader_state *)data;
    struct rmsgpack_dom_value *v       =
-      (struct rmsgpack_dom_value*)dom_reader_state_pop(dom_state);
+      (struct rmsgpack_dom_value*)rmsgpack_dom_reader_state_pop(dom_state);
    v->type                            = RDT_UINT;
    v->val.uint_                       = value;
    return 0;
@@ -97,9 +114,9 @@ static int dom_read_uint(uint64_t value, void *data)
 
 static int dom_read_string(char *value, uint32_t len, void *data)
 {
-   struct dom_reader_state *dom_state = (struct dom_reader_state *)data;
+   struct rmsgpack_dom_reader_state *dom_state = (struct rmsgpack_dom_reader_state *)data;
    struct rmsgpack_dom_value *v       =
-      (struct rmsgpack_dom_value*)dom_reader_state_pop(dom_state);
+      (struct rmsgpack_dom_value*)rmsgpack_dom_reader_state_pop(dom_state);
 
    v->type                            = RDT_STRING;
    v->val.string.len                  = len;
@@ -109,9 +126,9 @@ static int dom_read_string(char *value, uint32_t len, void *data)
 
 static int dom_read_bin(void *value, uint32_t len, void *data)
 {
-   struct dom_reader_state *dom_state = (struct dom_reader_state *)data;
+   struct rmsgpack_dom_reader_state *dom_state = (struct rmsgpack_dom_reader_state *)data;
    struct rmsgpack_dom_value *v       = (struct rmsgpack_dom_value*)
-      dom_reader_state_pop(dom_state);
+      rmsgpack_dom_reader_state_pop(dom_state);
    v->type                            = RDT_BINARY;
    v->val.binary.len                  = len;
    v->val.binary.buff                 = (char *)value;
@@ -122,8 +139,8 @@ static int dom_read_map_start(uint32_t len, void *data)
 {
    unsigned i;
    struct rmsgpack_dom_pair    *items = NULL;
-   struct dom_reader_state *dom_state = (struct dom_reader_state *)data;
-   struct rmsgpack_dom_value       *v = dom_reader_state_pop(dom_state);
+   struct rmsgpack_dom_reader_state *dom_state = (struct rmsgpack_dom_reader_state *)data;
+   struct rmsgpack_dom_value       *v = rmsgpack_dom_reader_state_pop(dom_state);
 
    v->type                            = RDT_MAP;
    v->val.map.len                     = len;
@@ -137,9 +154,9 @@ static int dom_read_map_start(uint32_t len, void *data)
 
    for (i = 0; i < len; i++)
    {
-      if (dom_reader_state_push(dom_state, &items[i].value) < 0)
+      if (rmsgpack_dom_reader_state_push(dom_state, &items[i].value) < 0)
          return -1;
-      if (dom_reader_state_push(dom_state, &items[i].key) < 0)
+      if (rmsgpack_dom_reader_state_push(dom_state, &items[i].key) < 0)
          return -1;
    }
 
@@ -149,8 +166,8 @@ static int dom_read_map_start(uint32_t len, void *data)
 static int dom_read_array_start(uint32_t len, void *data)
 {
    size_t i;
-   struct dom_reader_state *dom_state = (struct dom_reader_state *)data;
-   struct rmsgpack_dom_value *v       = dom_reader_state_pop(dom_state);
+   struct rmsgpack_dom_reader_state *dom_state = (struct rmsgpack_dom_reader_state *)data;
+   struct rmsgpack_dom_value *v       = rmsgpack_dom_reader_state_pop(dom_state);
    struct rmsgpack_dom_value *items   = NULL;
 
    v->type                            = RDT_ARRAY;
@@ -165,7 +182,7 @@ static int dom_read_array_start(uint32_t len, void *data)
 
    for (i = 0; i < len; i++)
    {
-      if (dom_reader_state_push(dom_state, &items[i]) < 0)
+      if (rmsgpack_dom_reader_state_push(dom_state, &items[len-i-1]) < 0)
          return -1;
    }
 
@@ -345,8 +362,8 @@ void rmsgpack_dom_value_print(struct rmsgpack_dom_value *obj)
 int rmsgpack_dom_write(intfstream_t *fd, const struct rmsgpack_dom_value *obj)
 {
    unsigned i;
-   int rv = 0;
-   int written = 0;
+   int rv   = 0;
+   int _len = 0;
 
    switch (obj->type)
    {
@@ -365,31 +382,31 @@ int rmsgpack_dom_write(intfstream_t *fd, const struct rmsgpack_dom_value *obj)
       case RDT_MAP:
          if ((rv = rmsgpack_write_map_header(fd, obj->val.map.len)) < 0)
             return rv;
-         written += rv;
+         _len += rv;
 
          for (i = 0; i < obj->val.map.len; i++)
          {
             if ((rv = rmsgpack_dom_write(fd, &obj->val.map.items[i].key)) < 0)
                return rv;
-            written += rv;
+            _len += rv;
             if ((rv = rmsgpack_dom_write(fd, &obj->val.map.items[i].value)) < 0)
                return rv;
-            written += rv;
+            _len += rv;
          }
          break;
       case RDT_ARRAY:
          if ((rv = rmsgpack_write_array_header(fd, obj->val.array.len)) < 0)
             return rv;
-         written += rv;
+         _len += rv;
 
          for (i = 0; i < obj->val.array.len; i++)
          {
             if ((rv = rmsgpack_dom_write(fd, &obj->val.array.items[i])) < 0)
                return rv;
-            written += rv;
+            _len += rv;
          }
    }
-   return written;
+   return _len;
 }
 
 static struct rmsgpack_read_callbacks dom_reader_callbacks = {
@@ -403,18 +420,39 @@ static struct rmsgpack_read_callbacks dom_reader_callbacks = {
 	dom_read_array_start
 };
 
-int rmsgpack_dom_read(intfstream_t *fd, struct rmsgpack_dom_value *out)
+int rmsgpack_dom_read_with(intfstream_t *fd, struct rmsgpack_dom_value *out, struct rmsgpack_dom_reader_state *s)
 {
    int rv;
-   struct dom_reader_state s;
-
-   s.i        = 0;
-   s.stack[0] = out;
-
-   if ((rv = rmsgpack_read(fd, &dom_reader_callbacks, &s)) < 0)
+   s->i        = 0;
+   s->stack[0] = out;
+   if ((rv = rmsgpack_read(fd, &dom_reader_callbacks, s)) < 0)
       rmsgpack_dom_value_free(out);
-
    return rv;
+}
+
+struct rmsgpack_dom_reader_state *rmsgpack_dom_reader_state_new(void)
+{
+   struct rmsgpack_dom_reader_state *s = calloc(1, sizeof(struct rmsgpack_dom_reader_state));
+   s->i = 0;
+   s->capacity = 1024;
+   s->growable = true;
+   s->stack = calloc(1024, sizeof(struct rmsgpack_dom_value *));
+   return s;
+}
+void rmsgpack_dom_reader_state_free(struct rmsgpack_dom_reader_state *state)
+{
+   free(state->stack);
+   free(state);
+}
+
+int rmsgpack_dom_read(intfstream_t *fd, struct rmsgpack_dom_value *out)
+{
+   struct rmsgpack_dom_reader_state s;
+   s.i = 0;
+   s.growable = false;
+   s.capacity = MAX_DEPTH;
+   s.stack = alloca(MAX_DEPTH*sizeof(struct rmsgpack_dom_value *));
+   return rmsgpack_dom_read_with(fd, out, &s);
 }
 
 int rmsgpack_dom_read_into(intfstream_t *fd, ...)
@@ -422,12 +460,6 @@ int rmsgpack_dom_read_into(intfstream_t *fd, ...)
    int rv;
    va_list ap;
    struct rmsgpack_dom_value map;
-   struct rmsgpack_dom_value key;
-   int64_t *int_value;
-   uint64_t *uint_value;
-   int *bool_value;
-   char *buff_value;
-   uint64_t min_len;
 
    va_start(ap, fd);
 
@@ -439,13 +471,20 @@ int rmsgpack_dom_read_into(intfstream_t *fd, ...)
 
    if (map.type == RDT_MAP)
    {
+      int *bool_value;
+      char *buff_value;
+      uint64_t min_len;
+      int64_t *int_value;
+      uint64_t *uint_value;
+      struct rmsgpack_dom_value key;
+
       for (;;)
       {
          struct rmsgpack_dom_value *value;
          const char *key_name = va_arg(ap, const char *);
 
          if (!key_name)
-            goto clean;
+            break;
 
          key.type             = RDT_STRING;
          key.val.string.len   = (uint32_t)strlen(key_name);
@@ -486,12 +525,13 @@ int rmsgpack_dom_read_into(intfstream_t *fd, ...)
                memcpy(buff_value, value->val.string.buff, (size_t)min_len);
                break;
             default:
-               goto clean;
+               va_end(ap);
+               rmsgpack_dom_value_free(&map);
+               return 0;
          }
       }
    }
 
-clean:
    va_end(ap);
    rmsgpack_dom_value_free(&map);
    return 0;

@@ -1385,7 +1385,8 @@ static void gl2_renderchain_render(
             rect->img_width, rect->img_height, true, false,
             video_scale_integer);
 
-      params.data          = gl;
+      params.vp_width      = gl->out_vp_width;
+      params.vp_height     = gl->out_vp_height;
       params.width         = prev_rect->img_width;
       params.height        = prev_rect->img_height;
       params.tex_width     = prev_rect->width;
@@ -1450,7 +1451,8 @@ static void gl2_renderchain_render(
    glClear(GL_COLOR_BUFFER_BIT);
    gl2_set_viewport(gl, width, height, false, true, video_scale_integer);
 
-   params.data          = gl;
+   params.vp_width      = gl->out_vp_width;
+   params.vp_height     = gl->out_vp_height;
    params.width         = prev_rect->img_width;
    params.height        = prev_rect->img_height;
    params.tex_width     = prev_rect->width;
@@ -1899,11 +1901,13 @@ static void gl2_renderchain_init(
    width        = gl->video_width;
    height       = gl->video_height;
 
-   scaler.scale = &scale;
+   scale.flags         = 0;
+   scaler.scale        = &scale;
 
    gl2_shader_scale(gl, &scaler, 1);
 
-   scaler.scale = &scale_last;
+   scale_last.flags    = 0;
+   scaler.scale        = &scale_last;
 
    gl2_shader_scale(gl, &scaler, shader_info_num);
 
@@ -2315,7 +2319,7 @@ static void gl2_renderchain_copy_frame(
          {
             /* Slow path - conv_buffer is preallocated
              * just in case we hit this path. */
-            int h;
+            size_t h;
             const unsigned line_bytes = width * gl->base_size;
             uint8_t *dst              = (uint8_t*)gl->conv_buffer;
             const uint8_t *src        = (const uint8_t*)frame;
@@ -3558,7 +3562,8 @@ static bool gl2_frame(void *data, const void *frame,
 
    glClear(GL_COLOR_BUFFER_BIT);
 
-   params.data             = gl;
+   params.vp_width         = gl->out_vp_width;
+   params.vp_height        = gl->out_vp_height;
    params.width            = frame_width;
    params.height           = frame_height;
    params.tex_width        = gl->tex_w;

@@ -186,7 +186,7 @@ retry:
 
                      input_autoconfigure_connect(
                            NULL,
-                           NULL,
+                           NULL, NULL,
                            "linuxraw",
                            idx,
                            0,
@@ -207,7 +207,7 @@ retry:
                   {
                      input_autoconfigure_connect(
                            linuxraw_pads[idx].ident,
-                           NULL,
+                           NULL, NULL,
                            "linuxraw",
                            idx,
                            0,
@@ -248,7 +248,7 @@ static void *linuxraw_joypad_init(void *data)
       init_ok = linuxraw_joypad_init_pad(path, pad);
 
       RARCH_DBG("[LinuxRaw] Scanning path \"%s\", ident \"%s\".\n", path, pad->ident);
-      input_autoconfigure_connect(pad->ident, NULL, "linuxraw",
+      input_autoconfigure_connect(pad->ident, NULL, NULL, "linuxraw",
             i, 0, 0);
 
       if (init_ok)
@@ -282,7 +282,7 @@ static void *linuxraw_joypad_init(void *data)
 
 static void linuxraw_joypad_destroy(void)
 {
-   unsigned i;
+   int i;
 
    for (i = 0; i < MAX_USERS; i++)
    {
@@ -362,7 +362,7 @@ static int16_t linuxraw_joypad_state(
       const struct retro_keybind *binds,
       unsigned port)
 {
-   unsigned i;
+   int i;
    int16_t ret                          = 0;
    uint16_t port_idx                    = joypad_info->joy_idx;
    const struct linuxraw_joypad    *pad = (const struct linuxraw_joypad*)

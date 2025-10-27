@@ -403,6 +403,10 @@ MSG_HASH(
    "replay_checkpoint_interval"
    )
 MSG_HASH(
+   MENU_ENUM_LABEL_REPLAY_CHECKPOINT_DESERIALIZE,
+   "replay_checkpoint_deserialize"
+   )
+MSG_HASH(
    MENU_ENUM_LABEL_AUTO_OVERRIDES_ENABLE,
    "auto_overrides_enable"
    )
@@ -512,17 +516,6 @@ MSG_HASH(
    MENU_ENUM_LABEL_CB_MENU_WALLPAPER,
    "cb_menu_wallpaper"
    )
-#if 0
-/* Thumbnailpack removal */
-MSG_HASH(
-   MENU_ENUM_LABEL_CB_THUMBNAILS_UPDATER_DOWNLOAD,
-   "cb_thumbnails_updater_download"
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_CB_THUMBNAILS_UPDATER_LIST,
-   "cb_thumbnails_updater_list"
-   )
-#endif
 MSG_HASH(
    MENU_ENUM_LABEL_CB_UPDATE_ASSETS,
    "cb_update_assets"
@@ -946,12 +939,8 @@ MSG_HASH(
    "deferred_frame_time_counter_settings_list"
    )
 MSG_HASH(
-   MENU_ENUM_LABEL_DEFERRED_VIDEO_SHADER_PRESET_REMOVE_LIST,
-   "deferred_video_shader_preset_remove_list"
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_DEFERRED_VIDEO_SHADER_PRESET_SAVE_LIST,
-   "deferred_video_shader_preset_save_list"
+   MENU_ENUM_LABEL_DEFERRED_VIDEO_SHADER_PRESET_MANAGER_LIST,
+   "deferred_video_shader_preset_manager_list"
    )
 MSG_HASH(
    MENU_ENUM_LABEL_DEFERRED_CDROM_INFO_LIST,
@@ -1027,8 +1016,8 @@ MSG_HASH(
    )
 #ifdef ANDROID
 MSG_HASH(
-        MENU_ENUM_LABEL_DEFERRED_DROPDOWN_BOX_LIST_INPUT_SELECT_PHYSICAL_KEYBOARD,
-    "deferred_dropdown_box_list_input_select_physical_keyboard"
+   MENU_ENUM_LABEL_DEFERRED_DROPDOWN_BOX_LIST_INPUT_SELECT_PHYSICAL_KEYBOARD,
+   "deferred_dropdown_box_list_input_select_physical_keyboard"
 )
 #endif
 MSG_HASH(
@@ -1447,13 +1436,6 @@ MSG_HASH(
    MENU_ENUM_LABEL_DEFERRED_CLOUD_SYNC_SETTINGS_LIST,
    "deferred_cloud_sync_settings_list"
    )
-#if 0
-/* Thumbnailpack removal */
-MSG_HASH(
-   MENU_ENUM_LABEL_DEFERRED_THUMBNAILS_UPDATER_LIST,
-   "deferred_thumbnails_updater_list"
-   )
-#endif
 MSG_HASH(
    MENU_ENUM_LABEL_DEFERRED_PL_THUMBNAILS_UPDATER_LIST,
    "deferred_pl_thumbnails_updater_list"
@@ -1853,6 +1835,14 @@ MSG_HASH(
    "all_users_control_menu"
    )
 MSG_HASH(
+   MENU_ENUM_LABEL_MENU_SINGLECLICK_PLAYLISTS,
+   "menu_singleclick_playlists"
+   )
+MSG_HASH(
+   MENU_ENUM_LABEL_MENU_ALLOW_TABS_BACK,
+   "menu_allow_tabs_back"
+   )
+MSG_HASH(
    MENU_ENUM_LABEL_MENU_INPUT_SWAP_OK_CANCEL,
    "menu_swap_ok_cancel"
    )
@@ -1899,6 +1889,14 @@ MSG_HASH(
 MSG_HASH(
    MENU_ENUM_LABEL_INPUT_ANALOG_SENSITIVITY,
    "input_analog_sensitivity"
+   )
+MSG_HASH(
+   MENU_ENUM_LABEL_INPUT_SENSOR_ACCELEROMETER_SENSITIVITY,
+   "input_sensor_accelerometer_sensitivity"
+   )
+MSG_HASH(
+   MENU_ENUM_LABEL_INPUT_SENSOR_GYROSCOPE_SENSITIVITY,
+   "input_sensor_gyroscope_sensitivity"
    )
 #ifdef GEKKO
 MSG_HASH(
@@ -2175,7 +2173,7 @@ MSG_HASH(
 MSG_HASH(
    MENU_ENUM_LABEL_INPUT_REMAP_SORT_BY_CONTROLLER_ENABLE,
    "input_remap_sort_by_controller_enable"
-   )   
+   )
 MSG_HASH(
    MENU_ENUM_LABEL_INPUT_SETTINGS,
    "input_settings"
@@ -3127,6 +3125,14 @@ MSG_HASH(
    "deferred_cursor_manager_list_rdb_entry_max_users"
    )
 MSG_HASH(
+   MENU_ENUM_LABEL_DEFERRED_CURSOR_MANAGER_LIST_RDB_ENTRY_GENRE,
+   "deferred_cursor_manager_list_rdb_entry_genre"
+   )
+MSG_HASH(
+   MENU_ENUM_LABEL_DEFERRED_CURSOR_MANAGER_LIST_RDB_ENTRY_REGION,
+   "deferred_cursor_manager_list_rdb_entry_region"
+   )
+MSG_HASH(
    MENU_ENUM_LABEL_RDB_ENTRY_DEVELOPER,
    "rdb_entry_developer"
    )
@@ -3765,26 +3771,6 @@ MSG_HASH(
    "settings_tab"
    )
 MSG_HASH(
-   MENU_ENUM_LABEL_SHADER_APPLY_CHANGES,
-   "shader_apply_changes"
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_SHADER_WATCH_FOR_CHANGES,
-   "video_shader_watch_files"
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VIDEO_SHADER_REMEMBER_LAST_DIR,
-   "video_shader_remember_last_dir"
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_SHADER_OPTIONS,
-   "shader_options"
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_SHADER_PARAMETERS_ENTRY,
-   "shader_parameters_entry"
-   )
-MSG_HASH(
    MENU_ENUM_LABEL_SHOW_ADVANCED_SETTINGS,
    "menu_show_advanced_settings"
    )
@@ -4043,6 +4029,10 @@ MSG_HASH(
    "menu_remember_selection"
    )
 MSG_HASH(
+   MENU_ENUM_LABEL_MENU_STARTUP_PAGE,
+   "menu_startup_page"
+   )
+MSG_HASH(
    MENU_ENUM_LABEL_UI_COMPANION_ENABLE,
    "ui_companion_enable"
    )
@@ -4152,23 +4142,23 @@ MSG_HASH(
    )
 MSG_HASH(
    MENU_ENUM_LABEL_CRT_SWITCH_RESOLUTION,
-	  "crt_switch_resolution"
+   "crt_switch_resolution"
    )
 MSG_HASH(
    MENU_ENUM_LABEL_CRT_SWITCH_RESOLUTION_SUPER,
-	  "crt_switch_resolution_super"
+   "crt_switch_resolution_super"
    )
 MSG_HASH(
    MENU_ENUM_LABEL_CRT_SWITCH_X_AXIS_CENTERING,
-	  "crt_switch_horizontal_shift"
+   "crt_switch_horizontal_shift"
    )
 MSG_HASH(
    MENU_ENUM_LABEL_CRT_SWITCH_PORCH_ADJUST,
-	  "crt_switch_horizontal_size"
+   "crt_switch_horizontal_size"
    )
 MSG_HASH(
    MENU_ENUM_LABEL_CRT_SWITCH_VERTICAL_ADJUST,
-	  "crt_switch_vertical_size"
+   "crt_switch_vertical_size"
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VIDEO_ASPECT_RATIO,
@@ -4593,6 +4583,26 @@ MSG_HASH(
    "video_shader_dir"
    )
 MSG_HASH(
+   MENU_ENUM_LABEL_SHADER_WATCH_FOR_CHANGES,
+   "video_shader_watch_files"
+   )
+MSG_HASH(
+   MENU_ENUM_LABEL_VIDEO_SHADER_REMEMBER_LAST_DIR,
+   "video_shader_remember_last_dir"
+   )
+MSG_HASH(
+   MENU_ENUM_LABEL_SHADER_APPLY_CHANGES,
+   "shader_apply_changes"
+   )
+MSG_HASH(
+   MENU_ENUM_LABEL_SHADER_OPTIONS,
+   "shader_options"
+   )
+MSG_HASH(
+   MENU_ENUM_LABEL_SHADER_PARAMETERS_ENTRY,
+   "shader_parameters_entry"
+   )
+MSG_HASH(
    MENU_ENUM_LABEL_VIDEO_SHADER_FILTER_PASS,
    "video_shader_filter_pass"
    )
@@ -4625,8 +4635,8 @@ MSG_HASH(
    "video_shader_preset_parameters"
    )
 MSG_HASH(
-   MENU_ENUM_LABEL_VIDEO_SHADER_PRESET_REMOVE,
-   "video_shader_preset_remove"
+   MENU_ENUM_LABEL_VIDEO_SHADER_PRESET_MANAGER,
+   "video_shader_preset_manager"
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VIDEO_SHADER_PRESET_REMOVE_GLOBAL,
@@ -4645,12 +4655,12 @@ MSG_HASH(
    "video_shader_preset_remove_game"
    )
 MSG_HASH(
-   MENU_ENUM_LABEL_VIDEO_SHADER_PRESET_SAVE,
-   "video_shader_preset_save"
-   )
-MSG_HASH(
    MENU_ENUM_LABEL_VIDEO_SHADER_PRESET_SAVE_REFERENCE,
    "video_shader_preset_save_reference"
+   )
+MSG_HASH(
+   MENU_ENUM_LABEL_VIDEO_SHADER_PRESET_SAVE_CURRENT,
+   "video_shader_preset_save_current"
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VIDEO_SHADER_PRESET_SAVE_AS,

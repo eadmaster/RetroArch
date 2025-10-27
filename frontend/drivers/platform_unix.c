@@ -163,14 +163,14 @@ int system_property_get(const char *command,
    FILE *pipe;
    char buffer[BUFSIZ];
    char cmd[NAME_MAX_LENGTH];
-   int length                   = 0;
-   char *curpos                 = NULL;
-   size_t buf_pos               = strlcpy(cmd, command, sizeof(cmd));
+   char *pos                  = NULL;
+   size_t __len               = 0;
+   size_t _len                = strlcpy(cmd, command, sizeof(cmd));
 
-   cmd[  buf_pos]               = ' ';
-   cmd[++buf_pos]               = '\0';
+   cmd[  _len]                = ' ';
+   cmd[++_len]                = '\0';
 
-   strlcpy(cmd + buf_pos, args, sizeof(cmd) - buf_pos);
+   strlcpy(cmd + _len, args, sizeof(cmd) - _len);
 
    if (!(pipe = popen(cmd, "r")))
    {
@@ -178,26 +178,24 @@ int system_property_get(const char *command,
       return 0;
    }
 
-   curpos = value;
+   pos = value;
 
    while (!feof(pipe))
    {
       if (fgets(buffer, sizeof(buffer), pipe))
       {
-         size_t curlen = strlen(buffer);
+         size_t _len = strlen(buffer);
 
-         memcpy(curpos, buffer, curlen);
+         memcpy(pos, buffer, _len);
 
-         curpos    += curlen;
-         length    += curlen;
+         pos   += _len;
+         __len += _len;
       }
    }
 
-   *curpos = '\0';
-
+   *pos = '\0';
    pclose(pipe);
-
-   return length;
+   return __len;
 }
 
 #ifdef ANDROID
@@ -702,7 +700,6 @@ static void check_proc_acpi_battery(const char * node, bool * have_battery,
       else if (string_is_equal(key, "remaining capacity"))
       {
          char *endptr = NULL;
-
          if (endptr && *endptr == ' ')
             remaining = (int)strtol(val, &endptr, 10);
       }

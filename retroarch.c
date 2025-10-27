@@ -38,12 +38,6 @@
 #include <signal.h>
 #endif
 
-#if defined(_WIN32_WINNT) && _WIN32_WINNT < 0x0500 || defined(_XBOX)
-#ifndef LEGACY_WIN32
-#define LEGACY_WIN32
-#endif
-#endif
-
 #if defined(_WIN32) && !defined(_XBOX) && !defined(__WINRT__)
 #include <objbase.h>
 #include <process.h>
@@ -582,8 +576,7 @@ midi_driver_t *midi_drivers[]   = {
 
 static midi_driver_t *midi_driver_find_driver(const char *ident)
 {
-   unsigned i;
-
+   size_t i;
    for (i = 0; i < ARRAY_SIZE(midi_drivers); ++i)
    {
       if (string_is_equal(midi_drivers[i]->ident, ident))
@@ -1236,7 +1229,7 @@ static size_t find_driver_nonempty(
 
 int driver_find_index(const char *label, const char *drv)
 {
-   unsigned i;
+   size_t i;
    char str[NAME_MAX_LENGTH];
 
    str[0] = '\0';
@@ -1263,16 +1256,13 @@ int driver_find_index(const char *label, const char *drv)
  **/
 static void driver_find_last(const char *label, char *s, size_t len)
 {
-   unsigned i;
-
+   size_t i;
    for (i = 0;
          find_driver_nonempty(label, i, s, len) > 0; i++) { }
-
    if (i)
       i = i - 1;
    else
       i = 0;
-
    find_driver_nonempty(label, i, s, len);
 }
 
@@ -1692,6 +1682,11 @@ void drivers_init(
             location_st->active = false;
    }
 
+#ifdef HAVE_MENU
+   if (flags & DRIVER_INPUT_MASK)
+      menu_st->input_pointer_hw_state.flags |= MENU_INP_PTR_FLG_RESET;
+#endif
+
    core_info_init_current_core();
 
 #if defined(HAVE_GFX_WIDGETS)
@@ -2028,7 +2023,7 @@ global_t *global_get_ptr(void)
    return &global_driver_st;
 }
 
-uint16_t retroarch_get_flags(void)
+uint32_t retroarch_get_flags(void)
 {
    struct rarch_state *p_rarch = &rarch_st;
    return p_rarch->flags;
@@ -2098,38 +2093,35 @@ struct string_list *dir_list_new_special(const char *input_dir,
 #if defined(HAVE_CG) || defined(HAVE_GLSL) || defined(HAVE_SLANG) || defined(HAVE_HLSL)
          {
             gfx_ctx_flags_t flags;
-            size_t _len         = 0;
-            flags.flags         = 0;
-            ext_shaders[0]      = '\0';
+            size_t _len          = 0;
+            flags.flags          = 0;
+            ext_shaders[0]       = '\0';
 
             video_context_driver_get_flags(&flags);
 
             if (BIT32_GET(flags.flags, GFX_CTX_FLAGS_SHADERS_CG))
             {
                _len    += strlcpy(ext_shaders + _len, "cgp", sizeof(ext_shaders) - _len);
-               if (ext_shaders[_len-1] != '\0')
-                  _len += strlcpy(ext_shaders + _len, "|",   sizeof(ext_shaders) - _len);
+               _len    += strlcpy(ext_shaders + _len, "|",   sizeof(ext_shaders) - _len);
                _len    += strlcpy(ext_shaders + _len, "cg",  sizeof(ext_shaders) - _len);
             }
 
             if (BIT32_GET(flags.flags, GFX_CTX_FLAGS_SHADERS_GLSL))
             {
-               if (ext_shaders[_len-1] != '\0')
+               if (_len > 0)
                   _len += strlcpy(ext_shaders + _len, "|",     sizeof(ext_shaders) - _len);
                _len    += strlcpy(ext_shaders + _len, "glslp", sizeof(ext_shaders) - _len);
-               if (ext_shaders[_len-1] != '\0')
-                  _len += strlcpy(ext_shaders + _len, "|",     sizeof(ext_shaders) - _len);
+               _len    += strlcpy(ext_shaders + _len, "|",     sizeof(ext_shaders) - _len);
                _len    += strlcpy(ext_shaders + _len, "glsl",  sizeof(ext_shaders) - _len);
             }
 
             if (BIT32_GET(flags.flags, GFX_CTX_FLAGS_SHADERS_SLANG))
             {
-               if (ext_shaders[_len-1] != '\0')
+               if (_len > 0)
                   _len += strlcpy(ext_shaders + _len, "|",      sizeof(ext_shaders) - _len);
                _len    += strlcpy(ext_shaders + _len, "slangp", sizeof(ext_shaders) - _len);
-               if (ext_shaders[_len-1] != '\0')
-                  _len += strlcpy(ext_shaders + _len, "|",      sizeof(ext_shaders) - _len);
-               _len    += strlcpy(ext_shaders + _len, "slang",  sizeof(ext_shaders) - _len);
+               _len    += strlcpy(ext_shaders + _len, "|",      sizeof(ext_shaders) - _len);
+               strlcpy(ext_shaders + _len, "slang",  sizeof(ext_shaders) - _len);
             }
 
             exts = ext_shaders;
@@ -2158,14 +2150,14 @@ struct string_list *dir_list_new_special(const char *input_dir,
 }
 
 static struct string_list *string_list_new_special(
-      enum string_list_type type, unsigned *len)
+      enum string_list_type type, size_t *len)
 {
+   int i;
    union string_list_elem_attr attr;
-   unsigned i;
    struct string_list *s = string_list_new();
 
-   if (!s || !len)
-      goto error;
+   if (!s)
+      return NULL;
 
    attr.i = 0;
    *len   = 0;
@@ -2370,24 +2362,21 @@ static struct string_list *string_list_new_special(
 #endif
       case STRING_LIST_NONE:
       default:
-         goto error;
+         string_list_free(s);
+         s    = NULL;
+         return NULL;
    }
 
    return s;
-
-error:
-   string_list_free(s);
-   s    = NULL;
-   return NULL;
 }
 
 const char *char_list_new_special(enum string_list_type type, void *data)
 {
-   unsigned len = 0;
-   struct string_list *s = string_list_new_special(type, &len);
-   char         *opt     = (len > 0) ? (char*)calloc(len, sizeof(char)): NULL;
+   size_t _len = 0;
+   struct string_list *s = string_list_new_special(type, &_len);
+   char         *opt     = (_len > 0) ? (char*)calloc(_len, sizeof(char)): NULL;
    if (opt && s)
-      string_list_join_concat(opt, len, s, "|");
+      string_list_join_concat(opt, _len, s, "|");
    string_list_free(s);
    s = NULL;
    return opt;
@@ -3564,6 +3553,21 @@ bool command_event(enum event_command cmd, void *data)
             configuration_set_int(settings, settings->ints.state_slot, new_state_slot);
          }
          break;
+      case CMD_EVENT_SAVE_REPLAY_CHECKPOINT:
+#ifdef HAVE_BSV_MOVIE
+         movie_commit_checkpoint(input_state_get_ptr());
+#endif
+         break;
+      case CMD_EVENT_PREV_REPLAY_CHECKPOINT:
+#ifdef HAVE_BSV_MOVIE
+         movie_skip_to_prev_checkpoint(input_state_get_ptr());
+#endif
+         break;
+      case CMD_EVENT_NEXT_REPLAY_CHECKPOINT:
+#ifdef HAVE_BSV_MOVIE
+         movie_skip_to_next_checkpoint(input_state_get_ptr());
+#endif
+         break;
       case CMD_EVENT_REPLAY_DECREMENT:
 #ifdef HAVE_BSV_MOVIE
          {
@@ -3615,6 +3619,11 @@ bool command_event(enum event_command cmd, void *data)
              * ends and writes it to a file */
             ram_state_to_file();
 
+            /* Save auto state */
+            if (settings->bools.savestate_auto_save &&
+                runloop_st->current_core_type != CORE_TYPE_DUMMY)
+               command_event_save_auto_state();
+
             /* Save last selected disk index, if required */
             if (sys_info)
                disk_control_save_image_index(&sys_info->disk_control);
@@ -3624,9 +3633,6 @@ bool command_event(enum event_command cmd, void *data)
                   settings->bools.content_runtime_log_aggregate,
                   settings->paths.directory_runtime_log,
                   settings->paths.directory_playlist);
-            if (settings->bools.savestate_auto_save &&
-                runloop_st->current_core_type != CORE_TYPE_DUMMY)
-               command_event_save_auto_state();
 
             if (     (runloop_st->flags & RUNLOOP_FLAG_REMAPS_CORE_ACTIVE)
                   || (runloop_st->flags & RUNLOOP_FLAG_REMAPS_CONTENT_DIR_ACTIVE)
@@ -4220,6 +4226,15 @@ bool command_event(enum event_command cmd, void *data)
              * ends and writes it to a file */
             ram_state_to_file();
 
+            /* Save auto state */
+            if (     runloop_st
+                  && (runloop_st->flags & RUNLOOP_FLAG_CORE_RUNNING)
+                  && settings->bools.savestate_auto_save)
+            {
+               command_event_save_auto_state();
+               content_wait_for_save_state_task();
+            }
+
             /* Save last selected disk index, if required */
             if (sys_info)
                disk_control_save_image_index(&sys_info->disk_control);
@@ -4229,13 +4244,6 @@ bool command_event(enum event_command cmd, void *data)
                   settings->bools.content_runtime_log_aggregate,
                   settings->paths.directory_runtime_log,
                   settings->paths.directory_playlist);
-
-            if (     runloop_st->flags & RUNLOOP_FLAG_CORE_RUNNING
-                  && settings->bools.savestate_auto_save)
-            {
-               command_event_save_auto_state();
-               content_wait_for_save_state_task();
-            }
 
             content_reset_savestate_backups();
             hwr = VIDEO_DRIVER_GET_HW_CONTEXT_INTERNAL(video_st);
@@ -4253,11 +4261,14 @@ bool command_event(enum event_command cmd, void *data)
              * runtime variables, otherwise runahead will
              * remain disabled until the user restarts
              * RetroArch */
-            if (!(runloop_st->flags & RUNLOOP_FLAG_RUNAHEAD_AVAILABLE))
-               runahead_clear_variables(runloop_st);
+            if (runloop_st)
+            {
+               if (!(runloop_st->flags & RUNLOOP_FLAG_RUNAHEAD_AVAILABLE))
+                  runahead_clear_variables(runloop_st);
 
-            /* Deallocate preemptive frames */
-            preempt_deinit(runloop_st);
+               /* Deallocate preemptive frames */
+               preempt_deinit(runloop_st);
+            }
 #endif
 
             if (hwr)
@@ -4507,15 +4518,15 @@ bool command_event(enum event_command cmd, void *data)
          {
 #ifdef HAVE_MENU
             struct string_list *str_list = (struct string_list*)data;
-            struct menu_state *menu_st     = menu_state_get_ptr();
-            settings_t *settings = config_get_ptr();
+            struct menu_state *menu_st   = menu_state_get_ptr();
+            settings_t *settings         = config_get_ptr();
 
             if (str_list)
             {
                if (str_list->size >= 7)
                {
-                  playlist_config_t playlist_config;
                   playlist_t * playlist;
+                  playlist_config_t playlist_config;
 
                   struct playlist_entry entry     = {0};
                   bool playlist_sort_alphabetical = settings->bools.playlist_sort_alphabetical;
@@ -4799,6 +4810,7 @@ bool command_event(enum event_command cmd, void *data)
          /* init netplay manually */
       case CMD_EVENT_NETPLAY_INIT:
          {
+            bool ret;
             char tmp_netplay_server[256];
             char tmp_netplay_session[256];
             char *netplay_server  = NULL;
@@ -4814,11 +4826,13 @@ bool command_event(enum event_command cmd, void *data)
                sizeof(tmp_netplay_server)))
             {
                netplay_server  = tmp_netplay_server;
-               netplay_session = tmp_netplay_session;
+               if (p_rarch->connect_mitm_id)
+                  netplay_session = strdup(p_rarch->connect_mitm_id);
+               else
+                  netplay_session = strdup(tmp_netplay_session);
             }
-
-            if (p_rarch->connect_mitm_id)
-                netplay_session = strdup(p_rarch->connect_mitm_id);
+            else if (p_rarch->connect_mitm_id)
+                netplay_session   = strdup(p_rarch->connect_mitm_id);
 
             if (p_rarch->connect_host)
             {
@@ -4831,15 +4845,19 @@ bool command_event(enum event_command cmd, void *data)
             if (!netplay_port)
                netplay_port   = settings->uints.netplay_port;
 
-            if (!init_netplay(netplay_server, netplay_port, netplay_session))
+            ret = init_netplay(netplay_server, netplay_port, netplay_session);
+
+            if (netplay_session)
+               free(netplay_session);
+            netplay_session          = NULL;
+
+            if (!ret)
             {
                command_event(CMD_EVENT_NETPLAY_DEINIT, NULL);
                if (p_rarch->connect_mitm_id)
                {
                   free(p_rarch->connect_mitm_id);
-                  free(netplay_session);
                   p_rarch->connect_mitm_id = NULL;
-                  netplay_session          = NULL;
                }
                return false;
             }
@@ -4847,9 +4865,7 @@ bool command_event(enum event_command cmd, void *data)
             if (p_rarch->connect_mitm_id)
             {
                free(p_rarch->connect_mitm_id);
-               free(netplay_session);
                p_rarch->connect_mitm_id = NULL;
-               netplay_session          = NULL;
             }
 
             /* Disable rewind & SRAM autosave if it was enabled
@@ -5228,8 +5244,7 @@ bool command_event(enum event_command cmd, void *data)
          break;
       case CMD_EVENT_RUMBLE_STOP:
          {
-            unsigned i;
-
+            size_t i;
             for (i = 0; i < MAX_USERS; i++)
             {
                unsigned joy_idx = settings->uints.input_joypad_index[i];
@@ -5722,12 +5737,12 @@ void retroarch_override_setting_unset(
 
 static void retroarch_override_setting_free_state(void)
 {
-   unsigned i;
+   size_t i;
    for (i = 0; i < RARCH_OVERRIDE_SETTING_LAST; i++)
    {
       if (i == RARCH_OVERRIDE_SETTING_LIBRETRO_DEVICE)
       {
-         unsigned j;
+         size_t j;
          for (j = 0; j < MAX_USERS; j++)
             retroarch_override_setting_unset(
                   RARCH_OVERRIDE_SETTING_LIBRETRO_DEVICE, &j);
@@ -5940,13 +5955,11 @@ int rarch_main(int argc, char *argv[], void *data)
 #endif
 
 #if defined(WEBOS)
-   // compatibility with webOS 3 - 5
-   if (getenv("EGL_PLATFORM") == NULL) {
+   /* compatibility with webOS 3 - 5 */
+   if (getenv("EGL_PLATFORM") == NULL)
       setenv("EGL_PLATFORM", "wayland", 0);
-   }
-   if(getenv("XDG_RUNTIME_DIR") == NULL) {
+   if (getenv("XDG_RUNTIME_DIR") == NULL)
       setenv("XDG_RUNTIME_DIR", "/tmp/xdg", 0);
-   }
 
    struct rlimit limit = {0, 0};
    setrlimit(RLIMIT_CORE, &limit);
@@ -6176,7 +6189,7 @@ const struct retro_subsystem_info *libretro_find_subsystem_info(
       const struct retro_subsystem_info *info, unsigned num_info,
       const char *ident)
 {
-   unsigned i;
+   size_t i;
    for (i = 0; i < num_info; i++)
    {
       if (     string_is_equal(info[i].ident, ident)
@@ -6205,16 +6218,12 @@ const struct retro_controller_description *
 libretro_find_controller_description(
       const struct retro_controller_info *info, unsigned id)
 {
-   unsigned i;
-
+   size_t i;
    for (i = 0; i < info->num_types; i++)
    {
-      if (info->types[i].id != id)
-         continue;
-
-      return &info->types[i];
+      if (info->types[i].id == id)
+         return &info->types[i];
    }
-
    return NULL;
 }
 
@@ -6569,7 +6578,7 @@ static void retroarch_print_help(const char *arg0)
          , sizeof(buf) - _len);
 #endif
 
-   _len = strlcpy(buf + _len,
+   strlcpy(buf + _len,
          "  -f, --fullscreen               "
          "Start the program in fullscreen regardless of config setting.\n"
          "      --set-shader=PATH          "
@@ -7202,6 +7211,9 @@ static bool retroarch_parse_input_and_config(
    runloop_st->current_core.flags &= ~(RETRO_CORE_FLAG_HAS_SET_INPUT_DESCRIPTORS
                                      | RETRO_CORE_FLAG_HAS_SET_SUBSYSTEMS);
 
+   /* Reset entry slot */
+   runloop_st->entry_state_slot = -1;
+
    /* Load the config file now that we know what it is */
 #ifdef HAVE_CONFIGFILE
    if (!(p_rarch->flags & RARCH_FLAGS_BLOCK_CONFIG_READ))
@@ -7772,7 +7784,6 @@ bool retroarch_main_init(int argc, char *argv[])
    input_st->osk_idx             = OSK_LOWERCASE_LATIN;
    video_st->flags              |= VIDEO_FLAG_ACTIVE;
    audio_state_get_ptr()->flags |= AUDIO_FLAG_ACTIVE;
-   runloop_st->entry_state_slot  = -1;
 
    if (setjmp(global->error_sjlj_context) > 0)
    {
@@ -8103,8 +8114,6 @@ bool retroarch_main_init(int argc, char *argv[])
 #ifdef HAVE_GAME_AI
    game_ai_init();
 #endif
-
-
 
    return true;
 
@@ -8516,15 +8525,15 @@ size_t retroarch_get_capabilities(enum rarch_capabilities type,
    return _len;
 }
 
-void retroarch_fail(int error_code, const char *error)
+void retroarch_fail(int err_code, const char *err)
 {
    global_t *global                = global_get_ptr();
    /* We cannot longjmp unless we're in retroarch_main_init().
     * If not, something went very wrong, and we should
     * just exit right away. */
-   strlcpy(global->error_string, error,
+   strlcpy(global->error_string, err,
          sizeof(global->error_string));
-   longjmp(global->error_sjlj_context, error_code);
+   longjmp(global->error_sjlj_context, err_code);
 }
 
 /* Called on close content, checks if we need to also exit retroarch */
@@ -8669,7 +8678,7 @@ bool retroarch_main_quit(void)
 
 enum retro_language retroarch_get_language_from_iso(const char *iso639)
 {
-   unsigned i;
+   size_t i;
    enum retro_language lang = RETRO_LANGUAGE_ENGLISH;
 
    struct lang_pair

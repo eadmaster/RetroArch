@@ -373,7 +373,8 @@ libretro_vfs_implementation_file *retro_vfs_file_open_impl(
    }
 #endif
 
-   stream->orig_path       = strdup(path);
+   if (path)
+      stream->orig_path = strdup(path);
 
 #ifdef HAVE_MMAP
    if (stream->hints & RETRO_VFS_FILE_ACCESS_HINT_FREQUENT_ACCESS && mode == RETRO_VFS_FILE_ACCESS_READ)
@@ -717,34 +718,34 @@ int64_t retro_vfs_file_read_impl(libretro_vfs_implementation_file *stream,
 
 int64_t retro_vfs_file_write_impl(libretro_vfs_implementation_file *stream, const void *s, uint64_t len)
 {
-   int64_t pos    = 0;
-   ssize_t result = -1;
+   int64_t pos = 0;
+   ssize_t ret = -1;
 
    if (!stream)
       return -1;
 
    if ((stream->hints & RFILE_HINT_UNBUFFERED) == 0)
    {
-      pos    = retro_vfs_file_tell_impl(stream);
-      result = fwrite(s, 1, (size_t)len, stream->fp);
+      pos = retro_vfs_file_tell_impl(stream);
+      ret = fwrite(s, 1, (size_t)len, stream->fp);
 
-      if (result != -1 && pos + result > stream->size)
-         stream->size = pos + result;
+      if (ret != -1 && pos + ret > stream->size)
+         stream->size = pos + ret;
 
-      return result;
+      return ret;
    }
 #ifdef HAVE_MMAP
    if (stream->hints & RETRO_VFS_FILE_ACCESS_HINT_FREQUENT_ACCESS)
       return -1;
 #endif
 
-   pos    = retro_vfs_file_tell_impl(stream);
-   result = write(stream->fd, s, (size_t)len);
+   pos = retro_vfs_file_tell_impl(stream);
+   ret = write(stream->fd, s, (size_t)len);
 
-   if (result != -1 && pos + result > stream->size)
-      stream->size = pos + result;
+   if (ret != -1 && pos + ret > stream->size)
+      stream->size = pos + ret;
 
-   return result;
+   return ret;
 }
 
 int retro_vfs_file_flush_impl(libretro_vfs_implementation_file *stream)
@@ -976,11 +977,11 @@ int retro_vfs_stat_impl(const char *path, int32_t *size)
 }
 
 #if defined(VITA)
-#define path_mkdir_error(ret) (((ret) == SCE_ERROR_ERRNO_EEXIST))
+#define path_mkdir_err(ret) (((ret) == SCE_ERROR_ERRNO_EEXIST))
 #elif defined(PSP) || defined(PS2) || defined(_3DS) || defined(WIIU) || defined(SWITCH)
-#define path_mkdir_error(ret) ((ret) == -1)
+#define path_mkdir_err(ret) ((ret) == -1)
 #else
-#define path_mkdir_error(ret) ((ret) < 0 && errno == EEXIST)
+#define path_mkdir_err(ret) ((ret) < 0 && errno == EEXIST)
 #endif
 
 int retro_vfs_mkdir_impl(const char *dir)
@@ -1030,7 +1031,7 @@ int retro_vfs_mkdir_impl(const char *dir)
    int ret = mkdir(dir, 0750);
 #endif
 
-   if (path_mkdir_error(ret))
+   if (path_mkdir_err(ret))
       return -2;
    return ret < 0 ? -1 : 0;
 }
@@ -1064,7 +1065,7 @@ struct libretro_vfs_implementation_dir
 #endif
 };
 
-static bool dirent_check_error(libretro_vfs_implementation_dir *rdir)
+static bool dirent_check_err(libretro_vfs_implementation_dir *rdir)
 {
 #if defined(_WIN32)
    return (rdir->directory == INVALID_HANDLE_VALUE);
@@ -1143,7 +1144,7 @@ libretro_vfs_implementation_dir *retro_vfs_opendir_impl(
    (void)include_hidden;
 #endif
 
-   if (rdir->directory && !dirent_check_error(rdir))
+   if (rdir->directory && !dirent_check_err(rdir))
       return rdir;
 
    retro_vfs_closedir_impl(rdir);

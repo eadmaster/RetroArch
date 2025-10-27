@@ -134,10 +134,6 @@ MSG_HASH(
    "باز کردن فهرست سنتی میزکار."
    )
 MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_MENU_DISABLE_KIOSK_MODE,
-   "غیرفعال کردن حالت کیوسک (نیازمند شروع مجدد)"
-   )
-MSG_HASH(
    MENU_ENUM_SUBLABEL_MENU_DISABLE_KIOSK_MODE,
    "نمایش تمام تنظیمات مربوط به پیکربندی."
    )
@@ -1820,14 +1816,6 @@ MSG_HASH(
 /* Settings > Video > Fullscreen Mode */
 
 MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_VIDEO_FULLSCREEN,
-   "شروع در حالت تمام‌صفحه"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_VIDEO_FULLSCREEN,
-   "شروع در حالت تمام‌صفحه. این مورد را در زمان اجرا نیز می‌توانید تغییر دهید. همچنین توسط خط فرمان قابل بازنویسی است."
-   )
-MSG_HASH(
    MENU_ENUM_LABEL_VALUE_VIDEO_WINDOWED_FULLSCREEN,
    "حالت پنجره‌ای تمام‌صفحه"
    )
@@ -2225,10 +2213,6 @@ MSG_HASH(
 #endif
 #ifdef ANDROID
 MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_INPUT_SELECT_PHYSICAL_KEYBOARD,
-   "انتخاب صفحه‌کلید فیزیکی"
-   )
-MSG_HASH(
    MENU_ENUM_SUBLABEL_INPUT_SELECT_PHYSICAL_KEYBOARD,
    "انتخاب این دستگاه به‌عنوان صفحه‌کلید فیزیکی به‌جای دسته‌بازی."
    )
@@ -2313,10 +2297,6 @@ MSG_HASH(
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_INPUT_USER_BINDS,
    "کنترل‌های درگاه %u"
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_QUIT_PRESS_TWICE,
-   "تأیید خروج"
    )
 
 /* Settings > Input > Haptic Feedback/Vibration */
@@ -3389,13 +3369,6 @@ MSG_HASH(
    MENU_ENUM_LABEL_VALUE_VIDEO_SHADERS_ENABLE,
    "سایه‌زن‌های ویدیو"
    )
-
-/* Quick Menu > Shaders > Save */
-
-
-
-
-/* Quick Menu > Shaders > Remove */
 
 
 /* Quick Menu > Shaders > Shader Parameters */

@@ -60,6 +60,7 @@ RETRO_BEGIN_DECLS
 
 #define POWERSTATE_CHECK_INTERVAL  (30 * 1000000)
 #define DATETIME_CHECK_INTERVAL    1000000
+#define MENU_DRAW_ENTRY_DELAY      30
 
 #define MENU_LIST_GET(list, idx) ((list) ? ((list)->menu_stack[(idx)]) : NULL)
 
@@ -511,7 +512,7 @@ struct menu_state
    menu_dialog_t dialog_st;
    enum menu_action prev_action;
 #ifdef HAVE_RUNAHEAD
-   enum menu_runahead_mode runahead_mode;
+   unsigned int runahead_mode;
 #endif
 
    /* int16_t alignment */

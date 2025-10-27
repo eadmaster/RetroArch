@@ -86,6 +86,7 @@ struct udev_joypad
    unsigned rumble_gain;
 
    char ident[NAME_MAX_LENGTH];
+   char phys[NAME_MAX_LENGTH];
    bool has_set_ff[2];
    /* Deal with analog triggers that report -32767 to 32767 */
    bool neg_trigger[NUM_AXES];
@@ -116,8 +117,7 @@ static INLINE int16_t udev_compute_axis(const struct input_absinfo *info, int va
 
 static int udev_find_vacant_pad(void)
 {
-   unsigned i;
-
+   int i;
    for (i = 0; i < MAX_USERS; i++)
       if (udev_pads[i].fd < 0)
          return i;
@@ -196,6 +196,7 @@ static int udev_add_pad(struct udev_device *dev, unsigned p, int fd, const char 
    unsigned long absbit[NBITS(ABS_MAX)] = {0};
    unsigned long ffbit[NBITS(FF_MAX)]   = {0};
    const char *device_name              = input_config_get_device_name(p);
+   size_t physlen                       = 0;
 
    if (string_is_empty(device_name))
       pad->ident[0] = '\0';
@@ -213,6 +214,13 @@ static int udev_add_pad(struct udev_device *dev, unsigned p, int fd, const char 
       pad->vid = inputid.vendor;
       pad->pid = inputid.product;
    }
+   if (ioctl(fd, EVIOCGPHYS(sizeof(pad->phys)), pad->phys) < 0)
+      pad->phys[0] = '\0';  /* Clear if unavailable */
+   else
+      physlen = strlen(pad->phys);
+
+   if (ioctl(fd, EVIOCGUNIQ(sizeof(pad->phys)-physlen), pad->phys+physlen) < 0)
+       pad->phys[physlen] = '\0';  /* Clear if unavailable */
 
    if (fstat(fd, &st) < 0)
       return -1;
@@ -279,6 +287,7 @@ static int udev_add_pad(struct udev_device *dev, unsigned p, int fd, const char 
       input_autoconfigure_connect(
                pad->ident,
                NULL,
+               pad->phys,
                udev_joypad.ident,
                p,
                pad->vid,
@@ -316,9 +325,9 @@ static int udev_add_pad(struct udev_device *dev, unsigned p, int fd, const char 
 
 static void udev_check_device(struct udev_device *dev, const char *path)
 {
+   int i;
    int ret;
    int pad, fd;
-   unsigned i;
    struct stat st;
 
    if (stat(path, &st) < 0)
@@ -366,7 +375,7 @@ static void udev_free_pad(unsigned pad)
 
 static void udev_joypad_remove_device(const char *path)
 {
-   unsigned i;
+   int i;
 
    for (i = 0; i < MAX_USERS; i++)
    {
@@ -382,7 +391,7 @@ static void udev_joypad_remove_device(const char *path)
 
 static void udev_joypad_destroy(void)
 {
-   unsigned i;
+   int i;
 
    for (i = 0; i < MAX_USERS; i++)
       udev_free_pad(i);
@@ -586,7 +595,7 @@ static void udev_joypad_poll(void)
 
 static void *udev_joypad_init(void *data)
 {
-   unsigned i;
+   int i;
    unsigned sorted_count = 0;
    struct udev_list_entry *devs     = NULL;
    struct udev_list_entry *item     = NULL;
@@ -745,7 +754,7 @@ static int16_t udev_joypad_state(
 
    if (port_idx < MAX_USERS)
    {
-      unsigned i;
+      int i;
       const struct udev_joypad *pad     = (const struct udev_joypad*)
          &udev_pads[port_idx];
       for (i = 0; i < RARCH_FIRST_CUSTOM_BIND; i++)

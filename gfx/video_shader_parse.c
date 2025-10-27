@@ -248,14 +248,14 @@ static void video_shader_replace_wildcards(char *s, size_t len, char *in_preset_
                      fill_pathname_parent_dir_name(content_dir_name,
                            rarch_path_basename,
                            sizeof(content_dir_name));
-                  if (string_is_not_equal_fast(content_dir_name, "", sizeof("")))
+                  if (memcmp(content_dir_name, "", sizeof("")) != 0)
                      strlcpy(content_dir_name,
                            path_basename_nocompression(content_dir_name),
                            sizeof(content_dir_name));
-                  if (string_is_not_equal_fast(content_dir_name, "", sizeof("")))
+                  if (memcmp(content_dir_name, "", sizeof("")) != 0)
                      path_remove_extension(content_dir_name);
 
-                  if (string_is_not_equal_fast(content_dir_name, "", sizeof("")))
+                  if (memcmp(content_dir_name, "", sizeof("")) != 0)
                      _len = strlcpy(replace_text, content_dir_name, sizeof(replace_text));
                   else
                      replace_text[0] = '\0';
@@ -344,13 +344,13 @@ static void video_shader_replace_wildcards(char *s, size_t len, char *in_preset_
                   char preset_dir_name[DIR_MAX_LENGTH];
                   fill_pathname_parent_dir_name(preset_dir_name,
                         in_preset_path, sizeof(preset_dir_name));
-                  if (string_is_not_equal_fast(preset_dir_name, "", sizeof("")))
+                  if (memcmp(preset_dir_name, "", sizeof("")) != 0)
                      strlcpy(preset_dir_name,
                            path_basename_nocompression(preset_dir_name),
                            sizeof(preset_dir_name));
-                  if (string_is_not_equal_fast(preset_dir_name, "", sizeof("")))
+                  if (memcmp(preset_dir_name, "", sizeof("")) != 0)
                      path_remove_extension(preset_dir_name);
-                  if (string_is_not_equal_fast(preset_dir_name, "", sizeof("")))
+                  if (memcmp(preset_dir_name, "", sizeof("")) != 0)
                      _len = strlcpy(replace_text,
                            preset_dir_name, sizeof(replace_text));
                   else
@@ -363,9 +363,9 @@ static void video_shader_replace_wildcards(char *s, size_t len, char *in_preset_
                   strlcpy(preset_name,
                         path_basename_nocompression(in_preset_path),
                         sizeof(preset_name));
-                  if (string_is_not_equal_fast(preset_name, "", sizeof("")))
+                  if (memcmp(preset_name, "", sizeof("")) != 0)
                      path_remove_extension(preset_name);
-                  if (string_is_not_equal_fast(preset_name, "", sizeof("")))
+                  if (memcmp(preset_name, "", sizeof("")) != 0)
                      _len = strlcpy(replace_text,
                            preset_name, sizeof(replace_text));
                   else
@@ -1114,19 +1114,24 @@ static bool video_shader_write_root_preset(const struct video_shader *shader,
    size_t i;
    char key[64];
    bool ret             = true;
-   char *tmp            = (char*)malloc(3 * PATH_MAX_LENGTH);
-   char *tmp_rel        = tmp +     PATH_MAX_LENGTH;
-   char *tmp_base       = tmp + 2 * PATH_MAX_LENGTH;
+   char *tmp            = NULL;
+   char *tmp_rel        = NULL;
+   char *tmp_base       = NULL;
    config_file_t *conf  = config_file_new_alloc();
 
    if (!conf)
       return false;
+
+   tmp = (char*)malloc(3 * PATH_MAX_LENGTH);
 
    if (!tmp)
    {
       config_file_free(conf);
       return false;
    }
+
+   tmp_rel        = tmp +     PATH_MAX_LENGTH;
+   tmp_base       = tmp + 2 * PATH_MAX_LENGTH;
 
    RARCH_DBG("[Shaders] Saving full preset to: \"%s\".\n", path);
 
@@ -2232,8 +2237,7 @@ bool video_shader_load_preset_into_shader(const char *path,
    if (!root_conf)
    {
       RARCH_WARN("[Shaders] Could not read root preset: \"%s\".\n", path);
-      ret = false;
-      goto end;
+      return false;
    }
 
    /* Check if the root preset is a valid shader chain
@@ -2340,7 +2344,6 @@ bool video_shader_load_preset_into_shader(const char *path,
 #endif
 
 end:
-
    path_linked_list_free(override_paths_list);
    config_file_free(conf);
    config_file_free(root_conf);
@@ -2513,8 +2516,8 @@ static bool video_shader_dir_init_shader_internal(
           * index if found */
          file_name = path_basename(file_path);
 
-         if ( !string_is_empty(file_name) &&
-               string_is_equal(file_name, shader_file_name))
+         if (    !string_is_empty(file_name)
+               && string_is_equal(file_name, shader_file_name))
          {
             RARCH_LOG("[Shaders] %s \"%s\".\n",
                   msg_hash_to_str(MSG_FOUND_SHADER),
@@ -2780,7 +2783,7 @@ static bool video_shader_load_shader_preset_internal(
    {
       /* Shader preset priority, highest to lowest
        * only important for video drivers with multiple shader backends */
-      RARCH_SHADER_GLSL, RARCH_SHADER_SLANG, RARCH_SHADER_CG, RARCH_SHADER_HLSL
+      RARCH_SHADER_SLANG, RARCH_SHADER_GLSL, RARCH_SHADER_CG, RARCH_SHADER_HLSL
    };
 
    flags.flags     = 0;
@@ -2837,7 +2840,7 @@ static bool video_shader_load_shader_preset_internal(
  *
  * Returns: false if there was an error or no action was performed.
  */
-static bool video_shader_load_auto_shader_preset(
+static size_t video_shader_load_auto_shader_preset(
       const char *video_shader_directory,
       const char *menu_config_directory,
       const char *core_name,
@@ -2892,7 +2895,7 @@ static bool video_shader_load_auto_shader_preset(
                   sizeof(shader_path),
                   dirs[i], core_name,
                   game_name))
-            goto success;
+            return strlcpy(s, shader_path, len);
 
          /* Folder-specific shader preset found? */
          if (video_shader_load_shader_preset_internal(
@@ -2900,7 +2903,7 @@ static bool video_shader_load_auto_shader_preset(
                   sizeof(shader_path),
                   dirs[i], core_name,
                   content_dir_name))
-            goto success;
+            return strlcpy(s, shader_path, len);
       }
 
       /* Core-specific shader preset found? */
@@ -2909,7 +2912,7 @@ static bool video_shader_load_auto_shader_preset(
                sizeof(shader_path),
                dirs[i], core_name,
                core_name))
-         goto success;
+         return strlcpy(s, shader_path, len);
 
       /* Global shader preset found? */
       if (video_shader_load_shader_preset_internal(
@@ -2917,14 +2920,10 @@ static bool video_shader_load_auto_shader_preset(
                sizeof(shader_path),
                dirs[i], NULL,
                "global"))
-         goto success;
+         return strlcpy(s, shader_path, len);
    }
-   return false;
 
-success:
-   /* Shader preset exists, load it. */
-   strlcpy(s, shader_path, len);
-   return true;
+   return 0;
 }
 
 bool video_shader_combine_preset_and_apply(
@@ -3001,7 +3000,6 @@ bool video_shader_apply_shader(
       if ((video_st->current_video->set_shader(
                   video_st->data, type, preset_path)))
       {
-         configuration_set_bool(settings, settings->bools.video_shader_enable, true);
          if (!string_is_empty(preset_path))
          {
             if (runloop_st->runtime_shader_preset_path != preset_path)

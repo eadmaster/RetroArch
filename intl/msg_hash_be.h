@@ -146,10 +146,6 @@ MSG_HASH(
    "Адкрывае традыцыйнае меню працоўнага стала."
    )
 MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_MENU_DISABLE_KIOSK_MODE,
-   "Адключыць рэжым кіёска (патрабуецца перазапуск)"
-   )
-MSG_HASH(
    MENU_ENUM_SUBLABEL_MENU_DISABLE_KIOSK_MODE,
    "Паказаць усе адпаведныя канфігурацыі налады."
    )
@@ -2316,14 +2312,6 @@ MSG_HASH(
 /* Settings > Video > Fullscreen Mode */
 
 MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_VIDEO_FULLSCREEN,
-   "Запуск у поўнаэкранным рэжыме"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_VIDEO_FULLSCREEN,
-   "Запусціць на ўвесь экран. Можа быць зменена падчас выканання. Можа перавызначацца параметрам каманднага радка."
-   )
-MSG_HASH(
    MENU_ENUM_LABEL_VALUE_VIDEO_WINDOWED_FULLSCREEN,
    "Аконны поўнаэкранны рэжым"
    )
@@ -2460,10 +2448,6 @@ MSG_HASH(
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_VIDEO_SCALE_INTEGER_SCALING,
    "Цэлалікавае маштабаванне"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_VIDEO_SCALE_INTEGER_SCALING,
-   "Акругліць у меншы або большы бок да наступнага цэлага ліку. 'Разумна' заніжае маштаб пры празмернай абрэзцы выявы."
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_VIDEO_SCALE_INTEGER_SCALING_UNDERSCALE,
@@ -3494,14 +3478,6 @@ MSG_HASH(
    MENU_ENUM_SUBLABEL_ANDROID_INPUT_DISCONNECT_WORKAROUND,
    "Рашэнне праблемы з адлучэннем ды паўторным падлучэннем кантролераў. Перашкаджае прызначэнню аднолькавых кантролераў для абодвух гульцоў."
    )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_QUIT_PRESS_TWICE,
-   "Пацвярджэнне выхаду"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_QUIT_PRESS_TWICE,
-   "Патрабаваць двайное націсканне гарачай клавішы выхаду, каб выйсці з RetroArch."
-   )
 
 /* Settings > Input > Haptic Feedback/Vibration */
 
@@ -3533,22 +3509,6 @@ MSG_HASH(
    "Выкарыстоўваць аднолькавае кіраванне як для меню, так і для гульняў. Ужываецца да клавіятуры."
    )
 MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_INPUT_DISABLE_INFO_BUTTON,
-   "Адключэнне кнопкі даведкі"
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_INPUT_DISABLE_SEARCH_BUTTON,
-   "Адключэнне кнопкі пошуку"
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_INPUT_DISABLE_LEFT_ANALOG_IN_MENU,
-   "Адключыць левы аналагавы стык у меню"
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_INPUT_DISABLE_RIGHT_ANALOG_IN_MENU,
-   "Адключыць правы аналагавы стык у меню"
-   )
-MSG_HASH(
    MENU_ENUM_LABEL_VALUE_MENU_INPUT_SWAP_OK_CANCEL,
    "Замена кнопак кіравання меню Згода ды Скасаванне"
    )
@@ -3571,6 +3531,38 @@ MSG_HASH(
 MSG_HASH(
    MENU_ENUM_SUBLABEL_INPUT_ALL_USERS_CONTROL_MENU,
    "Дазволіць любым карыстальнікам кіраваць меню. Калі выключана, толькі Карыстальнік 1 здольны кіраваць меню."
+   )
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_MENU_SCROLL_FAST,
+   "Паскарэнне прагорткі меню"
+   )
+MSG_HASH(
+   MENU_ENUM_SUBLABEL_MENU_SCROLL_FAST,
+   "Максімальная хуткасць курсора пры ўтрыманні пракруткі."
+   )
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_MENU_SCROLL_DELAY,
+   "Затрымка прагорткі меню"
+   )
+MSG_HASH(
+   MENU_ENUM_SUBLABEL_MENU_SCROLL_DELAY,
+   "Пачатковая затрымка ў мілісекундах пры ўтрыманні напрамку пракруткі."
+   )
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_INPUT_DISABLE_INFO_BUTTON,
+   "Адключэнне кнопкі даведкі"
+   )
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_INPUT_DISABLE_SEARCH_BUTTON,
+   "Адключэнне кнопкі пошуку"
+   )
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_INPUT_DISABLE_LEFT_ANALOG_IN_MENU,
+   "Адключыць левы аналагавы стык у меню"
+   )
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_INPUT_DISABLE_RIGHT_ANALOG_IN_MENU,
+   "Адключыць правы аналагавы стык у меню"
    )
 
 /* Settings > Input > Hotkeys */
@@ -5913,14 +5905,6 @@ MSG_HASH(
 /* Settings > User Interface */
 
 MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_MENU_VIEWS_SETTINGS,
-   "Бачнасць пунктаў меню"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_MENU_VIEWS_SETTINGS,
-   "Змяніць адлюстраванне элементаў меню RetroArch."
-   )
-MSG_HASH(
    MENU_ENUM_LABEL_VALUE_MENU_SETTINGS,
    "Выгляд"
    )
@@ -5929,23 +5913,61 @@ MSG_HASH(
    "Змяніць налады выгляду экраннага меню."
    )
 MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_APPICON_SETTINGS,
-   "Значок праграмы"
+   MENU_ENUM_LABEL_VALUE_MENU_VIEWS_SETTINGS,
+   "Бачнасць пунктаў меню"
    )
 MSG_HASH(
-   MENU_ENUM_SUBLABEL_APPICON_SETTINGS,
-   "Змяніць значок праграмы."
-   )
-#ifdef _3DS
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_MENU_BOTTOM_SETTINGS,
-   "Адлюстраванне ніжняга экрана 3DS"
+   MENU_ENUM_SUBLABEL_MENU_VIEWS_SETTINGS,
+   "Змяніць адлюстраванне элементаў меню RetroArch."
    )
 MSG_HASH(
-   MENU_ENUM_SUBLABEL_MENU_BOTTOM_SETTINGS,
-   "Налады знешняга выгляду ніжняга экрана."
+   MENU_ENUM_LABEL_VALUE_PAUSE_LIBRETRO,
+   "Паўза пры выкліку меню"
    )
-#endif
+MSG_HASH(
+   MENU_ENUM_SUBLABEL_PAUSE_LIBRETRO,
+   "Прыпыняць змесціва пры выкліку меню."
+   )
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_PAUSE_NONACTIVE,
+   "Паўза пры страце фокусу"
+   )
+MSG_HASH(
+   MENU_ENUM_SUBLABEL_PAUSE_NONACTIVE,
+   "Прыпыняць кантэнт пры страце фокусу акна RetroArch."
+   )
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_QUIT_ON_CLOSE_CONTENT,
+   "Выхад па закрыцці змесціва"
+   )
+MSG_HASH(
+   MENU_ENUM_SUBLABEL_QUIT_ON_CLOSE_CONTENT,
+   "Аўтаматычна зачыняць RetroArch пры прыпыненні кантэнту. Інтэрфейс каманднага радка будзе зачынены толькі калі кантэнт быў запушчаны праз яго."
+   )
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_MENU_SAVESTATE_RESUME,
+   "Аднаўляць кантэнт пасля захавання"
+   )
+MSG_HASH(
+   MENU_ENUM_SUBLABEL_MENU_SAVESTATE_RESUME,
+   "Аўтаматычна зачыняць меню і аднаўляць кантэнт пасля захавання або загрузкі стану. Адключэнне налады павялічвае хуткасць захавання для слабых прылад."
+   )
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_MENU_INSERT_DISK_RESUME,
+   "Аднаўляць кантэнт пры змене дыска"
+   )
+MSG_HASH(
+   MENU_ENUM_SUBLABEL_MENU_INSERT_DISK_RESUME,
+   "Аўтаматычна зачыняць меню і аднаўляць кантэнт, калі быў устаўлены ці загружаны новы дыск."
+   )
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_NAVIGATION_WRAPAROUND,
+   "Цыклічная пракрутка"
+   )
+MSG_HASH(
+   MENU_ENUM_SUBLABEL_NAVIGATION_WRAPAROUND,
+   "Пераходзіць у пачатак/канец спісу, калі дасягнута гарызантальная ці вертыкальная мяжа."
+   )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_SHOW_ADVANCED_SETTINGS,
    "Паказ пашыраных налад"
@@ -5971,44 +5993,28 @@ MSG_HASH(
    "Калі рэжым кіёска ўключаны, усталёўка пароля дазваляе адключыць яго з меню. Для гэтага абярыце ў галоўным меню 'Адключыць рэжым кіёска' і ўвядзіце пароль."
    )
 MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_NAVIGATION_WRAPAROUND,
-   "Цыклічная пракрутка"
+   MENU_ENUM_LABEL_VALUE_MOUSE_ENABLE,
+   "Падтрымка мышы"
    )
 MSG_HASH(
-   MENU_ENUM_SUBLABEL_NAVIGATION_WRAPAROUND,
-   "Пераходзіць у пачатак/канец спісу, калі дасягнута гарызантальная ці вертыкальная мяжа."
+   MENU_ENUM_SUBLABEL_MOUSE_ENABLE,
+   "Уключае навігацыю ў меню з дапамогай мышы."
    )
 MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_PAUSE_LIBRETRO,
-   "Паўза пры выкліку меню"
+   MENU_ENUM_LABEL_VALUE_POINTER_ENABLE,
+   "Падтрымка дотыкаў"
    )
 MSG_HASH(
-   MENU_ENUM_SUBLABEL_PAUSE_LIBRETRO,
-   "Прыпыняць змесціва пры выкліку меню."
+   MENU_ENUM_SUBLABEL_POINTER_ENABLE,
+   "Уключае навігацыю ў меню з дапамогай тачскрына."
    )
 MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_MENU_SAVESTATE_RESUME,
-   "Аднаўляць кантэнт пасля захавання"
+   MENU_ENUM_LABEL_VALUE_THREADED_DATA_RUNLOOP_ENABLE,
+   "Задачы асобным патокам"
    )
 MSG_HASH(
-   MENU_ENUM_SUBLABEL_MENU_SAVESTATE_RESUME,
-   "Аўтаматычна зачыняць меню і аднаўляць кантэнт пасля захавання або загрузкі стану. Адключэнне налады павялічвае хуткасць захавання для слабых прылад."
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_MENU_INSERT_DISK_RESUME,
-   "Аднаўляць кантэнт пры змене дыска"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_MENU_INSERT_DISK_RESUME,
-   "Аўтаматычна зачыняць меню і аднаўляць кантэнт, калі быў устаўлены ці загружаны новы дыск."
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_QUIT_ON_CLOSE_CONTENT,
-   "Выхад па закрыцці змесціва"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_QUIT_ON_CLOSE_CONTENT,
-   "Аўтаматычна зачыняць RetroArch пры прыпыненні кантэнту. Інтэрфейс каманднага радка будзе зачынены толькі калі кантэнт быў запушчаны праз яго."
+   MENU_ENUM_SUBLABEL_THREADED_DATA_RUNLOOP_ENABLE,
+   "Выконваць задачы ў асобным патоку."
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_MENU_SCREENSAVER_TIMEOUT,
@@ -6047,38 +6053,6 @@ MSG_HASH(
    "Настройка хуткасці эфекту анімацыі застаўкі."
    )
 MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_MOUSE_ENABLE,
-   "Падтрымка мышы"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_MOUSE_ENABLE,
-   "Уключае навігацыю ў меню з дапамогай мышы."
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_POINTER_ENABLE,
-   "Падтрымка дотыкаў"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_POINTER_ENABLE,
-   "Уключае навігацыю ў меню з дапамогай тачскрына."
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_THREADED_DATA_RUNLOOP_ENABLE,
-   "Задачы асобным патокам"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_THREADED_DATA_RUNLOOP_ENABLE,
-   "Выконваць задачы ў асобным патоку."
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_PAUSE_NONACTIVE,
-   "Паўза пры страце фокусу"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_PAUSE_NONACTIVE,
-   "Прыпыняць кантэнт пры страце фокусу акна RetroArch."
-   )
-MSG_HASH(
    MENU_ENUM_LABEL_VALUE_VIDEO_DISABLE_COMPOSITION,
    "Адключыць кампазіцыю працоўнага стала"
    )
@@ -6089,22 +6063,6 @@ MSG_HASH(
 MSG_HASH(
    MENU_ENUM_LABEL_HELP_VIDEO_DISABLE_COMPOSITION,
    "Прымусовае адключэнне кампазіцыі. У наш час працуе толькі ў Windows Vista/7."
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_MENU_SCROLL_FAST,
-   "Паскарэнне прагорткі меню"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_MENU_SCROLL_FAST,
-   "Максімальная хуткасць курсора пры ўтрыманні пракруткі."
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_MENU_SCROLL_DELAY,
-   "Затрымка прагорткі меню"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_MENU_SCROLL_DELAY,
-   "Пачатковая затрымка ў мілісекундах пры ўтрыманні напрамку пракруткі."
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_UI_COMPANION_ENABLE,
@@ -6125,6 +6083,24 @@ MSG_HASH(
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_UI_COMPANION_TOGGLE,
    "Адкрываць меню працоўнага стала падчас запуску"
+   )
+#ifdef _3DS
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_MENU_BOTTOM_SETTINGS,
+   "Адлюстраванне ніжняга экрана 3DS"
+   )
+MSG_HASH(
+   MENU_ENUM_SUBLABEL_MENU_BOTTOM_SETTINGS,
+   "Налады знешняга выгляду ніжняга экрана."
+   )
+#endif
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_APPICON_SETTINGS,
+   "Значок праграмы"
+   )
+MSG_HASH(
+   MENU_ENUM_SUBLABEL_APPICON_SETTINGS,
+   "Змяніць значок праграмы."
    )
 
 /* Settings > User Interface > Menu Item Visibility */
@@ -6949,6 +6925,14 @@ MSG_HASH(
    MENU_ENUM_LABEL_VALUE_MENU_REMEMBER_SELECTION_MAIN,
    "Толькі для галоўнага меню ды налад"
    )
+MSG_HASH(
+   MENU_ENUM_LABEL_VALUE_MENU_STARTUP_PAGE,
+   "Пачатковы экран"
+   )
+MSG_HASH(
+   MENU_ENUM_SUBLABEL_MENU_STARTUP_PAGE,
+   "Пачатковая старонка меню пры запуску."
+   )
 
 /* Settings > AI Service */
 
@@ -7316,10 +7300,6 @@ MSG_HASH(
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_NETPLAY_MITM_SERVER_LOCATION_4,
    "Паўднёва-Усходняя Азія"
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_NETPLAY_MITM_SERVER_LOCATION_5,
-   "Усходняя Азія (Чхунчхон, Паўднёвая Карэя)"
    )
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_NETPLAY_MITM_SERVER_LOCATION_CUSTOM,
@@ -9722,22 +9702,6 @@ MSG_HASH(
    "Дадаць набор налад па-за бягучымі загружанымі."
    )
 MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_VIDEO_SHADER_PRESET_SAVE,
-   "Захаваць набор налад"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_VIDEO_SHADER_PRESET_SAVE,
-   "Захаваць бягучы набор налад шэйдара."
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_VIDEO_SHADER_PRESET_REMOVE,
-   "Прыбраць набор налад"
-   )
-MSG_HASH(
-   MENU_ENUM_SUBLABEL_VIDEO_SHADER_PRESET_REMOVE,
-   "Прыбраць аўтаматычны набор налад шэйдара."
-   )
-MSG_HASH(
    MENU_ENUM_LABEL_VALUE_SHADER_APPLY_CHANGES,
    "Ужыць змены"
    )
@@ -9794,21 +9758,13 @@ MSG_HASH(
    "Маштаб для бягучага праходу. Множнікі маштабавання складаюцца, напрыклад 2x для першага праходу і 2x для другога ў суме даюць множнік 4x.\nПры наяўнасці множніка ў апошнім праходзе выніковая выява расцягваецца на ўвесь экран з фільтрам па змаўчанні, зыходзячы са значэння 'Біл[...]"
    )
 
-/* Quick Menu > Shaders > Save */
-
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_VIDEO_SHADER_PRESET_SAVE_REFERENCE,
    "Простыя наборы налад"
    )
-
 MSG_HASH(
    MENU_ENUM_SUBLABEL_VIDEO_SHADER_PRESET_SAVE_REFERENCE,
    "Захоўваць прасэты шэйдараў у выглядзе спасылкі на арыгінальны прасэт з наборам параметраў, змененых карыстальнікам."
-   )
-
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_VIDEO_SHADER_PRESET_SAVE_AS,
-   "Захаваць набор налад шэйдара як"
    )
 MSG_HASH(
    MENU_ENUM_SUBLABEL_VIDEO_SHADER_PRESET_SAVE_AS,
@@ -9846,9 +9802,6 @@ MSG_HASH(
    MENU_ENUM_SUBLABEL_VIDEO_SHADER_PRESET_SAVE_GAME,
    "Захаваць бягучыя наладкі шэйдара ў якасці стандартных для загружанага кантэнту."
    )
-
-/* Quick Menu > Shaders > Remove */
-
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_NO_PRESETS_FOUND,
    "Аўтаматычныя прасэты шэйдараў не знойдзены"
@@ -11387,10 +11340,6 @@ MSG_HASH(
 MSG_HASH(
    MENU_ENUM_LABEL_VALUE_MENU_XMB_TITLE_MARGIN_HORIZONTAL_OFFSET,
    "Зрух загалоўка па гарызанталі"
-   )
-MSG_HASH(
-   MENU_ENUM_LABEL_VALUE_XMB_MAIN_MENU_ENABLE_SETTINGS,
-   "Уключыць укладку 'Налады' (патрабуецца перазапуск)"
    )
 MSG_HASH(
    MENU_ENUM_SUBLABEL_XMB_MAIN_MENU_ENABLE_SETTINGS,
@@ -13366,6 +13315,14 @@ MSG_HASH(
    "Усе ядры якія падтрымліваюцца зменены на версіі з Play Store"
    )
 MSG_HASH(
+   MSG_NUM_CORES_UPDATED,
+   "Абноўлена ядраў: "
+   )
+MSG_HASH(
+   MSG_NUM_CORES_LOCKED,
+   "Прапушчана ядраў: "
+   )
+MSG_HASH(
    MSG_CORE_UPDATE_DISABLED,
    "Абнаўленне ядра адключана - ядро заблакаванае: "
    )
@@ -13532,6 +13489,10 @@ MSG_HASH(
 MSG_HASH(
    MSG_CORE_DOES_NOT_SUPPORT_SAVESTATES,
    "Ядро не падтрымлівае захаванне станаў."
+   )
+MSG_HASH(
+   MSG_CORE_DOES_NOT_SUPPORT_DISK_OPTIONS,
+   "Ядро не падтрымлівае кіраванне дыскамі."
    )
 MSG_HASH(
    MSG_CORE_OPTIONS_FILE_CREATED_SUCCESSFULLY,
@@ -13719,15 +13680,15 @@ MSG_HASH(
    )
 MSG_HASH(
    MSG_FAILED_TO_LOAD,
-   "Не атрымалася загрузіць"
+   "Не атрымалася загрузіць."
    )
 MSG_HASH(
    MSG_FAILED_TO_LOAD_CONTENT,
-   "Не атрымалася загрузіць змесціва"
+   "Не атрымалася загрузіць змесціва."
    )
 MSG_HASH(
    MSG_FAILED_TO_LOAD_MOVIE_FILE,
-   "Не атрымалася загрузіць файл запісу"
+   "Не атрымалася загрузіць файл запісу."
    )
 MSG_HASH(
    MSG_FAILED_TO_LOAD_OVERLAY,
@@ -13872,6 +13833,18 @@ MSG_HASH(
 MSG_HASH(
    MSG_REPLAY_LOAD_STATE_HALT_INCOMPAT,
    "Несумяшчальна з паўторам"
+   )
+MSG_HASH(
+   MSG_REPLAY_LOAD_STATE_FAILED_FUTURE_STATE,
+   "Немажліва загрузіць будучы стан падчас прайгравання"
+   )
+MSG_HASH(
+   MSG_REPLAY_LOAD_STATE_FAILED_WRONG_TIMELINE,
+   "Памылка храналогіі падчас прайгравання"
+   )
+MSG_HASH(
+   MSG_REPLAY_LOAD_STATE_OVERWRITING_REPLAY,
+   "Хібная храналогія, запіс нанава"
    )
 MSG_HASH(
    MSG_FOUND_SHADER,
@@ -14170,6 +14143,10 @@ MSG_HASH(
    "Дасягнута мяжа буфера перамоткі."
    )
 MSG_HASH(
+   MSG_SAVED_NEW_CONFIG_TO,
+   "Канфігурацыя захавана ў"
+   )
+MSG_HASH(
    MSG_SAVED_STATE_TO_SLOT,
    "Захавана ў слот #%d."
    )
@@ -14315,7 +14292,15 @@ MSG_HASH(
    )
 MSG_HASH(
    MSG_PRESS_AGAIN_TO_QUIT,
-   "Націсніце зноў каб выйсці..."
+   "Націсніце зноў, каб выйсці..."
+   )
+MSG_HASH(
+   MSG_PRESS_AGAIN_TO_CLOSE_CONTENT,
+   "Націсніце зноў, каб закрыць змесціва..."
+   )
+MSG_HASH(
+   MSG_PRESS_AGAIN_TO_RESET,
+   "Націсніце зноў, каб скінуць..."
    )
 MSG_HASH(
    MSG_TO,

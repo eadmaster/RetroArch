@@ -126,7 +126,7 @@ static const char *xinput_joypad_name(unsigned pad)
 
 static void *xinput_joypad_init(void *data)
 {
-   unsigned i, j;
+   int i, j;
    XINPUT_STATE dummy_state;
 
 #if defined(HAVE_DYLIB) && !defined(__WINRT__)
@@ -226,7 +226,7 @@ static void *xinput_joypad_init(void *data)
          int32_t pid          = 0;
          input_autoconfigure_connect(
                name,
-               NULL,
+               NULL, NULL,
                xinput_joypad.ident,
                j,
                vid,
@@ -266,7 +266,7 @@ static bool xinput_joypad_query_pad(unsigned pad)
 
 static void xinput_joypad_destroy(void)
 {
-   unsigned i;
+   int i;
 
    for (i = 0; i < 4; ++i)
    {
@@ -316,7 +316,7 @@ static int16_t xinput_joypad_state_func(
       const struct retro_keybind *binds,
       unsigned port)
 {
-   unsigned i;
+   int i;
    uint16_t btn_word;
    int16_t ret                = 0;
    uint16_t port_idx          = joypad_info->joy_idx;
@@ -350,6 +350,9 @@ static int16_t xinput_joypad_state_func(
 
 static void xinput_joypad_poll(void)
 {
+   int i;
+   bool has_active_ports = false;
+
    /* Hotplugging detection: scanning one port at a time every few frames,
     * to avoid polling overload and framerate drops. */
    xinput_poll_counter++;
@@ -367,7 +370,7 @@ static void xinput_joypad_poll(void)
             int32_t pid = 0;
             input_autoconfigure_connect(
                   name,
-                  NULL,
+                  NULL, NULL,
                   xinput_joypad.ident,
                   xinput_hotplug_index,
                   vid,
@@ -379,20 +382,33 @@ static void xinput_joypad_poll(void)
       xinput_hotplug_index = (xinput_hotplug_index + 1) % 4;
    }
 
-   unsigned i;
+   for (i = 0; i < 4; ++i)
+   {
+      if (xinput_active_port[i])
+         has_active_ports = true;
+   }
+
    for (i = 0; i < 4; ++i)
    {
       DWORD status;
       bool success, new_connected;
       xinput_joypad_state *state;
+      /* On UWP, controllers may become available after initialization.
+       * If no ports are currently active, we need to poll all ports
+       * to catch any late arriving controllers. */
+#ifdef __WINRT__
+if (!xinput_active_port[i] && has_active_ports)
+   continue;
+#else
       if (!xinput_active_port[i])
          continue;
+#endif
 
       state          = &g_xinput_states[i];
       status         = g_XInputGetStateEx(i, &state->xstate);
       success        = status == ERROR_SUCCESS;
       new_connected  = status != ERROR_DEVICE_NOT_CONNECTED;
-      
+
       if (new_connected != state->connected)
       {
          /* Normally, dinput handles device insertion/removal for us, but
@@ -442,7 +458,7 @@ static bool xinput_joypad_rumble(unsigned pad,
 
    now                    = clock();
    time_since_last_rumble = (double)(now - last_rumble_time[xuser]) / CLOCKS_PER_SEC;
-   
+
    /* Rumble interval unelapsed? */
    if (time_since_last_rumble < RUMBLE_INTERVAL)
       return true;

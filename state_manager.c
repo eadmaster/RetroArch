@@ -561,24 +561,6 @@ recheckcapacity:;
    state->entries++;
 }
 
-#if 0
-static void state_manager_capacity(state_manager_t *state,
-      unsigned *entries, size_t *bytes, bool *full)
-{
-   size_t headpos   = state->head - state->data;
-   size_t tailpos   = state->tail - state->data;
-   size_t remaining = (tailpos + state->capacity -
-         sizeof(size_t) - headpos - 1) % state->capacity + 1;
-
-   if (entries)
-      *entries      = state->entries;
-   if (bytes)
-      *bytes        = state->capacity-remaining;
-   if (full)
-      *full         = remaining <= state->maxcompsize * 2;
-}
-#endif
-
 void state_manager_event_init(
       struct state_manager_rewind_state *rewind_st,
       unsigned rewind_buffer_size)
@@ -644,7 +626,9 @@ void state_manager_event_init(
 
    state_manager_push_where(rewind_st->state, &state);
 
+   rewind_st->flags |= STATE_MGR_REWIND_ST_FLAG_IS_REWIND_SERIALIZE;
    content_serialize_state_rewind(state, rewind_st->size);
+   rewind_st->flags &= ~STATE_MGR_REWIND_ST_FLAG_IS_REWIND_SERIALIZE;
 
    state_manager_push_do(rewind_st->state);
 }
@@ -776,7 +760,17 @@ bool state_manager_check_rewind(
       }
       else
       {
-         content_deserialize_state(buf, rewind_st->size);
+#ifdef HAVE_BSV_MOVIE
+         input_driver_state_t *input_st = input_state_get_ptr();
+         /* Don't end reversing during playback or recording */
+         if(BSV_MOVIE_IS_PLAYBACK_ON() || BSV_MOVIE_IS_RECORDING())
+         {
+            rewind_st->flags |= STATE_MGR_REWIND_ST_FLAG_FRAME_IS_REVERSED;
+            bsv_movie_frame_rewind();
+         }
+         else
+#endif
+            content_deserialize_state(buf, rewind_st->size);
 
 #ifdef HAVE_NETWORKING
          /* Tell netplay we're done */
@@ -811,7 +805,9 @@ bool state_manager_check_rewind(
          void *state = NULL;
          state_manager_push_where(rewind_st->state, &state);
 
+         rewind_st->flags |= STATE_MGR_REWIND_ST_FLAG_IS_REWIND_SERIALIZE;
          content_serialize_state_rewind(state, rewind_st->size);
+         rewind_st->flags &= ~STATE_MGR_REWIND_ST_FLAG_IS_REWIND_SERIALIZE;
 
          state_manager_push_do(rewind_st->state);
       }

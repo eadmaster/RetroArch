@@ -101,40 +101,6 @@ static void find_record_driver(void)
    }
 }
 
-#if 0
-/* TODO/FIXME - not used apparently */
-/**
- * ffemu_find_backend:
- * @ident                   : Identifier of driver to find.
- *
- * Finds a recording driver with the name @ident.
- *
- * Returns: recording driver handle if successful, otherwise
- * NULL.
- **/
-static const record_driver_t *ffemu_find_backend(const char *ident)
-{
-   unsigned i;
-
-   for (i = 0; record_drivers[i]; i++)
-   {
-      if (string_is_equal(record_drivers[i]->ident, ident))
-         return record_drivers[i];
-   }
-
-   return NULL;
-}
-
-static void recording_driver_free_state(void)
-{
-   /* TODO/FIXME - this is not being called anywhere */
-   recording_state.gpu_width     = 0;
-   recording_state.gpu_height    = 0;
-   recording_state.width         = 0;
-   recording_state.height        = 0;
-}
-#endif
-
 /**
  * gfx_ctx_init_first:
  * @param backend
@@ -241,12 +207,12 @@ bool recording_init(void)
 
    if (!video_gpu_record && video_driver_is_hw_context())
    {
-      RARCH_WARN("[Recording] %s.\n",
+      RARCH_WARN("[Recording] %s\n",
             msg_hash_to_str(MSG_HW_RENDERED_MUST_USE_POSTSHADED_RECORDING));
-      return false;
+      video_gpu_record = true;
    }
 
-   RARCH_LOG("[Recording] %s: FPS: %.2f, Sample rate: %.2f.\n",
+   RARCH_LOG("[Recording] %s: FPS: %.2f, Sample rate: %.2f Hz.\n",
          msg_hash_to_str(MSG_CUSTOM_TIMING_GIVEN),
          (float)av_info->timing.fps,
          (float)av_info->timing.sample_rate);
@@ -313,7 +279,7 @@ bool recording_init(void)
    }
 
    params.audio_resampler           = settings->arrays.audio_resampler;
-   params.video_gpu_record          = settings->bools.video_gpu_record;
+   params.video_gpu_record          = video_gpu_record;
    params.video_record_scale_factor = settings->uints.video_record_scale_factor;
    params.video_stream_scale_factor = settings->uints.video_stream_scale_factor;
    params.video_record_threads      = settings->uints.video_record_threads;
@@ -351,7 +317,7 @@ bool recording_init(void)
       }
    }
 
-   if (settings->bools.video_gpu_record
+   if (  video_gpu_record
       && video_st->current_video->read_viewport)
    {
       unsigned gpu_size;

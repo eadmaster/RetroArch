@@ -174,7 +174,7 @@ static int task_database_iterate_start(retro_task_t *task,
 
    if (!string_is_empty(basename_path))
       snprintf(msg, sizeof(msg),
-         STRING_REP_USIZE "/" STRING_REP_USIZE ": %s..\n",
+         STRING_REP_USIZE "/" STRING_REP_USIZE ": %s...\n",
          db->list_ptr + 1,
          (size_t)db->list->size,
          basename_path);
@@ -209,20 +209,20 @@ static int intfstream_get_serial(intfstream_t *fd, char *s, size_t len, const ch
       size_t system_len = strlen(system_name);
       if (string_starts_with_size(system_name, "Sony", STRLEN_CONST("Sony")))
       {
-         if (STRLEN_CONST("Sony - PlayStation Portable") == system_len &&
-             string_is_equal_fast(system_name, "Sony - PlayStation Portable", system_len))
+         if (   STRLEN_CONST("Sony - PlayStation Portable") == system_len
+             && memcmp(system_name, "Sony - PlayStation Portable", system_len) == 0)
          {
             if (detect_psp_game(fd, s, len, filename) != 0)
                return 1;
          }
-         else if (STRLEN_CONST("Sony - PlayStation") == system_len &&
-                  string_is_equal_fast(system_name, "Sony - PlayStation", system_len))
+         else if (   STRLEN_CONST("Sony - PlayStation") == system_len
+                  && memcmp(system_name, "Sony - PlayStation", system_len) == 0)
          {
             if (detect_ps1_game(fd, s, len, filename) != 0)
                return 1;
          }
-         else if (STRLEN_CONST("Sony - PlayStation 2") == system_len &&
-                  string_is_equal_fast(system_name, "Sony - PlayStation 2", system_len))
+         else if (   STRLEN_CONST("Sony - PlayStation 2") == system_len
+                  && memcmp(system_name, "Sony - PlayStation 2", system_len) == 0)
          {
             if (detect_ps2_game(fd, s, len, filename) != 0)
                return 1;
@@ -230,14 +230,14 @@ static int intfstream_get_serial(intfstream_t *fd, char *s, size_t len, const ch
       }
       else if (string_starts_with_size(system_name, "Nintendo", STRLEN_CONST("Nintendo")))
       {
-         if (STRLEN_CONST("Nintendo - GameCube") == system_len &&
-             string_is_equal_fast(system_name, "Nintendo - GameCube", system_len))
+         if (   STRLEN_CONST("Nintendo - GameCube") == system_len
+             && memcmp(system_name, "Nintendo - GameCube", system_len) == 0)
          {
             if (detect_gc_game(fd, s, len, filename) != 0)
                return 1;
          }
-         else if (STRLEN_CONST("Nintendo - Wii") == system_len &&
-                  string_is_equal_fast(system_name, "Nintendo - Wii", system_len))
+         else if (   STRLEN_CONST("Nintendo - Wii") == system_len
+                  && memcmp(system_name, "Nintendo - Wii", system_len) == 0)
          {
             if (detect_wii_game(fd, s, len, filename) != 0)
                return 1;
@@ -245,20 +245,20 @@ static int intfstream_get_serial(intfstream_t *fd, char *s, size_t len, const ch
       }
       else if (string_starts_with_size(system_name, "Sega", STRLEN_CONST("Sega")))
       {
-         if (STRLEN_CONST("Sega - Mega-CD - Sega CD") == system_len &&
-             string_is_equal_fast(system_name, "Sega - Mega-CD - Sega CD", system_len))
+         if (   STRLEN_CONST("Sega - Mega-CD - Sega CD") == system_len
+             && memcmp(system_name, "Sega - Mega-CD - Sega CD", system_len) == 0)
          {
             if (detect_scd_game(fd, s, len, filename) != 0)
                return 1;
          }
-         else if (STRLEN_CONST("Sega - Saturn") == system_len &&
-                  string_is_equal_fast(system_name, "Sega - Saturn", system_len))
+         else if (   STRLEN_CONST("Sega - Saturn") == system_len
+                  && memcmp(system_name, "Sega - Saturn", system_len) == 0)
          {
             if (detect_sat_game(fd, s, len, filename) != 0)
                return 1;
          }
-         else if (STRLEN_CONST("Sega - Dreamcast") == system_len &&
-                  string_is_equal_fast(system_name, "Sega - Dreamcast", system_len))
+         else if (   STRLEN_CONST("Sega - Dreamcast") == system_len
+                  && memcmp(system_name, "Sega - Dreamcast", system_len) == 0)
          {
             if (detect_dc_game(fd, s, len, filename) != 0)
                return 1;
@@ -523,9 +523,7 @@ static void task_database_cue_prune(database_info_handle_t *db,
          if (db->list->elems[i].data
                && string_is_equal(path, db->list->elems[i].data))
          {
-#ifdef DEBUG
-            RARCH_LOG("[Scanner] Pruning file referenced by cue: %s\n", path);
-#endif
+            RARCH_DBG("[Scanner] Pruning file referenced by CUE: %s\n", path);
             free(db->list->elems[i].data);
             db->list->elems[i].data = NULL;
          }
@@ -555,7 +553,7 @@ static void gdi_prune(database_info_handle_t *db, const char *name)
          if (db->list->elems[i].data
                && string_is_equal(path, db->list->elems[i].data))
          {
-            RARCH_LOG("[Scanner] Pruning file referenced by gdi: %s\n", path);
+            RARCH_DBG("[Scanner] Pruning file referenced by GDI: %s\n", path);
             free(db->list->elems[i].data);
             db->list->elems[i].data = NULL;
          }
@@ -727,6 +725,9 @@ static int database_info_list_iterate_end_no_match(
          string_list_free(archive_list);
       }
    }
+   else
+      RARCH_LOG("[Scanner] No match for: \"%s\" (%s %08X)\n", path,
+                db_state->serial, db_state->crc);
 
    db_state->list_index  = 0;
    db_state->entry_index = 0;
@@ -790,7 +791,7 @@ static int database_info_list_iterate_found_match(
    entry_path_str[0]              = '\0';
 
    fill_pathname(db_playlist_base_str,
-         path_basename_nocompression(db_path), ".lpl", str_len);
+         path_basename_nocompression(db_path), ".lpl", sizeof(db_playlist_base_str));
 
    if (!string_is_empty(_db->playlist_directory))
       fill_pathname_join_special(db_playlist_path, _db->playlist_directory,
@@ -835,7 +836,7 @@ static int database_info_list_iterate_found_match(
       fill_pathname(entry_lbl,
             path_basename_nocompression(entry_path), "", str_len);
 
-      RARCH_LOG("[Scanner] No match for: \"%s\", CRC: 0x%08X\n", entry_path_str, db_state->crc);
+      RARCH_LOG("[Scanner] Faulty match for: \"%s\", CRC: 0x%08X\n", entry_path_str, db_state->crc);
    }
 
    if (!string_is_empty(archive_name))
@@ -843,8 +844,8 @@ static int database_info_list_iterate_found_match(
             entry_path_str, archive_name, '#', str_len);
 
    if (core_info_database_match_archive_member(
-         db_state->list->elems[db_state->list_index].data) &&
-       (hash = strchr(entry_path_str, '#')))
+         db_state->list->elems[db_state->list_index].data)
+       && (hash = strchr(entry_path_str, '#')))
        *hash = '\0';
 
 #if !defined(RARCH_INTERNAL)

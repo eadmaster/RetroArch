@@ -13,7 +13,7 @@
  *
  *  You should have received a copy of the GNU General Public License along with RetroArch.
  *  If not, see <http://www.gnu.org/licenses/>.
- */ 
+ */
 
 #include <stdint.h>
 #include <stdlib.h>
@@ -74,8 +74,9 @@ static bool gfx_ctx_emscripten_webgl_get_metrics(void *data,
 {
    switch (type)
    {
-      // there is no way to get the actual DPI in emscripten, so return a standard value instead.
-      // this is needed for menu touch/pointer swipe scrolling to work.
+      /* There is no way to get the actual DPI in emscripten, so
+       * return a standard value instead. This is needed for
+       * menu touch/pointer swipe scrolling to work. */
       case DISPLAY_METRIC_DPI:
          *value = 150.0f;
          break;
@@ -209,9 +210,11 @@ static uint32_t gfx_ctx_emscripten_webgl_get_flags(void *data)
 
 static void gfx_ctx_emscripten_webgl_set_flags(void *data, uint32_t flags) { }
 
+void *emscripten_GetProcAddress(const char *);
+
 static gfx_ctx_proc_t gfx_ctx_emscripten_webgl_get_proc_address(const char *symbol)
 {
-   return emscripten_webgl_get_proc_address(symbol);
+   return emscripten_GetProcAddress(symbol);
 }
 
 const gfx_ctx_driver_t gfx_ctx_emscripten_webgl = {

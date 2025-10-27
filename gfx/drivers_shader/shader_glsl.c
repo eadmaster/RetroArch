@@ -56,8 +56,8 @@ struct cache_vbo
 {
    GLuint vbo_primary;
    GLuint vbo_secondary;
-   size_t size_primary;
-   size_t size_secondary;
+   size_t len_primary;
+   size_t len_secondary;
    GLfloat *buffer_primary;
    GLfloat *buffer_secondary;
 };
@@ -376,22 +376,27 @@ static bool gl_glsl_compile_shader(glsl_shader_data_t *glsl,
          strtoul(existing_version + 8, (char**)&program, 10);
 
 #ifdef HAVE_OPENGLES
-      if (version_no >= 130 && version_no < 330)
+      if (gl_check_capability(GL_CAPS_GLES3_SUPPORTED))
       {
-         version_extra = " es";
-         version_no    = 300;
+         if (version_no >= 130 && version_no < 330)
+         {
+            version_extra = " es";
+            version_no    = 300;
+         }
+         else if (version_no == 330)
+         {
+            version_extra = " es";
+            version_no    = 310;
+         }
+         else if (version_no > 330)
+         {
+            version_extra = " es";
+            version_no    = 320;
+         }
+         else version_no  = 100;
       }
-      else if (version_no == 330)
-      {
-         version_extra = " es";
-         version_no    = 310;
-      }
-      else if (version_no > 330)
-      {
-         version_extra = " es";
-         version_no    = 320;
-      }
-      else version_no  = 100;
+      /* Avoid versions that definitely aren't supported. */
+      else version_no     = 100;
 #endif
       snprintf(version,
             sizeof(version), "#version %u%s\n", version_no, version_extra);
@@ -895,7 +900,12 @@ static void gl_glsl_init_menu_shaders(void *data)
    shader_prog_info.vertex = stock_vertex_xmb_ribbon_modern;
    shader_prog_info.fragment = stock_fragment_xmb;
 #else
-   if (gl_query_extension("GL_OES_standard_derivatives"))
+   if (gl_check_capability(GL_CAPS_GLES3_SUPPORTED))
+   {
+      shader_prog_info.vertex = stock_vertex_xmb_ribbon_modern;
+      shader_prog_info.fragment = core_stock_fragment_xmb;
+   }
+   else if (gl_query_extension("GL_OES_standard_derivatives"))
    {
       shader_prog_info.vertex = glsl_core ? stock_vertex_xmb_ribbon_modern : stock_vertex_xmb_ribbon_legacy;
       shader_prog_info.fragment = glsl_core ? core_stock_fragment_xmb : stock_fragment_xmb;
@@ -1016,7 +1026,7 @@ static void *gl_glsl_init(void *data, const char *path)
    struct shader_program_info shader_prog_info;
    bool shader_support        = false;
 #ifdef GLSL_DEBUG
-   char *error_string         = NULL;
+   char *err_string           = NULL;
 #endif
    const char *stock_vertex   = NULL;
    const char *stock_fragment = NULL;
@@ -1177,10 +1187,10 @@ static void *gl_glsl_init(void *data, const char *path)
       gl_glsl_find_uniforms(glsl, i, glsl->prg[i].id, &glsl->uniforms[i]);
 
 #ifdef GLSL_DEBUG
-   if (!gl_check_error(&error_string))
+   if (!gl_check_error(&err_string))
    {
-      RARCH_ERR("%s\n", error_string);
-      free(error_string);
+      RARCH_ERR("%s\n", err_string);
+      free(err_string);
       RARCH_WARN("[GLSL] Detected GL error in GLSL.\n");
    }
 #endif
@@ -1297,9 +1307,8 @@ static void gl_glsl_set_params(void *dat, void *shader_data)
    struct glsl_attrib attribs[32];
    float input_size[2], output_size[2], texture_size[2], final_vp_size[2];
    video_shader_ctx_params_t          *params = (video_shader_ctx_params_t*)dat;
-   gl2_t                             *gl_data = (gl2_t*)params->data;
-   unsigned vp_width                          = gl_data->out_vp_width;
-   unsigned vp_height                         = gl_data->out_vp_height;
+   unsigned vp_width                          = params->vp_width;
+   unsigned vp_height                         = params->vp_height;
    unsigned width                             = params->width;
    unsigned height                            = params->height;
    unsigned tex_width                         = params->tex_width;
@@ -1384,13 +1393,14 @@ static void gl_glsl_set_params(void *dat, void *shader_data)
   if (uni->core_aspect >= 0)
       glUniform1f(uni->core_aspect, video_driver_get_core_aspect());
 
-  if (uni->core_aspect_rot >= 0) {
-      /* OriginalAspectRotated: return 1/aspect for 90 and 270 rotated content */
-      float core_aspect_rot = video_driver_get_core_aspect();
-      uint32_t rot = retroarch_get_rotation();
-      if (rot == 1 || rot == 3)
-         core_aspect_rot = 1/core_aspect_rot;
-      glUniform1f(uni->core_aspect_rot, core_aspect_rot);
+  if (uni->core_aspect_rot >= 0)
+  {
+     /* OriginalAspectRotated: return 1/aspect for 90 and 270 rotated content */
+     float core_aspect_rot = video_driver_get_core_aspect();
+     uint32_t rot = retroarch_get_rotation();
+     if (rot == 1 || rot == 3)
+        core_aspect_rot = 1/core_aspect_rot;
+     glUniform1f(uni->core_aspect_rot, core_aspect_rot);
   }
 
    /* Set lookup textures. */
@@ -1559,7 +1569,7 @@ static void gl_glsl_set_params(void *dat, void *shader_data)
    if (size)
       gl_glsl_set_attribs(glsl, glsl->vbo[glsl->active_idx].vbo_secondary,
             &glsl->vbo[glsl->active_idx].buffer_secondary,
-            &glsl->vbo[glsl->active_idx].size_secondary,
+            &glsl->vbo[glsl->active_idx].len_secondary,
             buffer, size, attribs, attribs_size);
 
    glActiveTexture(GL_TEXTURE0);
@@ -1691,7 +1701,7 @@ static bool gl_glsl_set_coords(void *shader_data,
       gl_glsl_set_attribs(glsl,
             glsl->vbo[glsl->active_idx].vbo_primary,
             &glsl->vbo[glsl->active_idx].buffer_primary,
-            &glsl->vbo[glsl->active_idx].size_primary,
+            &glsl->vbo[glsl->active_idx].len_primary,
             buffer, size,
             attribs, attribs_size);
 

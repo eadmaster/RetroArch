@@ -202,6 +202,10 @@ ACHIEVEMENTS
 #include "../cheevos/cheevos_client.c"
 #include "../cheevos/cheevos_menu.c"
 
+#if defined(HAVE_CHEEVOS_RVZ)
+#include "../cheevos/cheevos_rvz.c"
+#endif
+
 #include "../deps/rcheevos/src/rc_client.c"
 #include "../deps/rcheevos/src/rc_compat.c"
 #include "../deps/rcheevos/src/rc_libretro.c"
@@ -226,6 +230,10 @@ ACHIEVEMENTS
 #include "../deps/rcheevos/src/rhash/aes.c"
 #include "../deps/rcheevos/src/rhash/cdreader.c"
 #include "../deps/rcheevos/src/rhash/hash.c"
+#include "../deps/rcheevos/src/rhash/hash_rom.c"
+#include "../deps/rcheevos/src/rhash/hash_disc.c"
+#include "../deps/rcheevos/src/rhash/hash_zip.c"
+#include "../deps/rcheevos/src/rhash/hash_encrypted.c"
 
 #endif
 
@@ -454,17 +462,14 @@ VIDEO DRIVER
 
 #if defined(HAVE_D3D11)
 #include "../gfx/drivers/d3d11.c"
-#include "../gfx/common/d3d11_common.c"
 #endif
 
 #if defined(HAVE_D3D12)
 #include "../gfx/drivers/d3d12.c"
-#include "../gfx/common/d3d12_common.c"
 #endif
 
 #if defined(HAVE_D3D10)
 #include "../gfx/drivers/d3d10.c"
-#include "../gfx/common/d3d10_common.c"
 #endif
 
 #if defined(HAVE_D3D10) || defined(HAVE_D3D11) || defined(HAVE_D3D12)
@@ -610,6 +615,10 @@ INPUT
 ============================================================ */
 
 #include "../input/input_driver.c"
+#ifdef HAVE_BSV_MOVIE
+#include "../input/bsv/bsvmovie.c"
+#include "../input/bsv/uint32s_index.c"
+#endif
 #include "../input/input_keymaps.c"
 #include "../tasks/task_autodetect.c"
 #include "../input/input_autodetect_builtin.c"
@@ -897,9 +906,6 @@ AUDIO
 #include "../input/drivers/sdl_input.c"
 #include "../input/drivers_joypad/sdl_joypad.c"
 #include "../gfx/drivers_context/sdl_gl_ctx.c"
-#ifdef HAVE_MICROPHONE
-#include "../audio/drivers_microphone/sdl_microphone.c"
-#endif
 #endif
 
 #ifdef HAVE_DSOUND
@@ -908,11 +914,6 @@ AUDIO
 
 #ifdef HAVE_WASAPI
 #include "../audio/drivers/wasapi.c"
-#include "../audio/common/wasapi.c"
-
-#ifdef HAVE_MICROPHONE
-#include "../audio/drivers_microphone/wasapi.c"
-#endif
 #endif
 
 #ifdef HAVE_SL
@@ -922,10 +923,6 @@ AUDIO
 #ifdef HAVE_PIPEWIRE
 #include "../audio/drivers/pipewire.c"
 #include "../audio/common/pipewire.c"
-
-#ifdef HAVE_MICROPHONE
-#include "../audio/drivers_microphone/pipewire.c"
-#endif
 #endif
 
 #ifdef HAVE_ALSA
@@ -935,12 +932,6 @@ AUDIO
 #include "../audio/drivers/alsa.c"
 #include "../audio/common/alsa.c"
 #include "../audio/drivers/alsathread.c"
-#include "../audio/common/alsathread.c"
-
-#ifdef HAVE_MICROPHONE
-#include "../audio/drivers_microphone/alsa.c"
-#include "../audio/drivers_microphone/alsathread.c"
-#endif
 #endif
 #endif
 
@@ -960,7 +951,7 @@ AUDIO
 #include "../audio/drivers/coreaudio.c"
 #endif
 
-#if defined(HAVE_WASAPI) || ((_WIN32_WINNT >= 0x0602) && !defined(__WINRT__))
+#if defined(HAVE_WASAPI) || ((_WIN32_WINNT >= 0x0600) && !defined(__WINRT__))
 #include "../audio/common/mmdevice_common.c"
 #endif
 
@@ -1513,6 +1504,18 @@ DEPENDENCIES
 #include "../deps/zstd/lib/common/fse_decompress.c"
 #include "../deps/zstd/lib/common/zstd_common.c"
 #include "../deps/zstd/lib/common/xxhash.c"
+#include "../deps/zstd/lib/compress/fse_compress.c"
+#include "../deps/zstd/lib/compress/hist.c"
+#include "../deps/zstd/lib/compress/huf_compress.c"
+#include "../deps/zstd/lib/compress/zstd_compress.c"
+#include "../deps/zstd/lib/compress/zstd_compress_literals.c"
+#include "../deps/zstd/lib/compress/zstd_compress_sequences.c"
+#include "../deps/zstd/lib/compress/zstd_compress_superblock.c"
+#include "../deps/zstd/lib/compress/zstd_double_fast.c"
+#include "../deps/zstd/lib/compress/zstd_fast.c"
+#include "../deps/zstd/lib/compress/zstd_lazy.c"
+#include "../deps/zstd/lib/compress/zstd_ldm.c"
+#include "../deps/zstd/lib/compress/zstd_opt.c"
 #include "../deps/zstd/lib/decompress/huf_decompress.c"
 #include "../deps/zstd/lib/decompress/zstd_ddict.c"
 #include "../deps/zstd/lib/decompress/zstd_decompress.c"
@@ -1649,9 +1652,9 @@ SSL
 #include "../deps/mbedtls/ssl_srv.c"
 #include "../deps/mbedtls/ssl_ticket.c"
 #include "../deps/mbedtls/ssl_tls.c"
+#endif
 
 #include "../libretro-common/net/net_socket_ssl_mbed.c"
-#endif
 #endif
 #endif
 
