@@ -461,9 +461,25 @@ bool using_hw_framebuffer() {
 }
 
 
-size_t get_memory_address_arg(lua_State *L, const int BYTES_TO_READ, const unsigned int domain) {    
-    size_t address = (size_t)luaL_checkinteger(L, 1);
+int check_memory_range(lua_State *L, const size_t start_address, const size_t len, const unsigned int domain) {
     size_t memsize;
+    if(domain == RETRO_MEMORY_ROM)
+    {
+        content_state_t *p_content = content_state_get_ptr();
+        memsize = p_content->content_list->entries[0].data_size;    
+    } else {  // other domains
+        runloop_state_t *runloop_st = runloop_state_get_ptr(); 
+        memsize = runloop_st->current_core.retro_get_memory_size(domain);
+    }
+    
+    if((start_address + len - 1) > memsize) {
+        //RARCH_ERR("address out of bounds: %d > %d\n", address, memsize );
+        return luaL_error(L, "memory address out of bounds");
+    }
+}
+
+size_t get_memory_address_arg(lua_State *L, const size_t BYTES_TO_READ, const unsigned int domain) {    
+    size_t address = (size_t)luaL_checkinteger(L, 1);
     
     // check if the address is valid for the current core
     if(domain == RETRO_MEMORY_ROM)
@@ -471,23 +487,29 @@ size_t get_memory_address_arg(lua_State *L, const int BYTES_TO_READ, const unsig
         content_state_t *p_content = content_state_get_ptr();
         if (!p_content || !p_content->content_list || p_content->content_list->size == 0)
             return luaL_error(L, "Content is not loaded in RAM");
-        memsize = p_content->content_list->entries[0].data_size;
-    } else {  // other domains
-        runloop_state_t *runloop_st = runloop_state_get_ptr(); 
-        memsize = runloop_st->current_core.retro_get_memory_size(domain);
     }
+        
+    check_memory_range(L, address, BYTES_TO_READ, domain);
     
-    if((address + BYTES_TO_READ - 1) > memsize) {
-        //RARCH_ERR("address out of bounds: %d > %d\n", address, memsize );
-        return luaL_error(L, "address out of bounds");
-    }
     // else 
     return address;
 }
 
+uint8_t* get_memory_ptr(lua_State *L, const unsigned int domain) {
+    uint8_t *data;
+    if(domain == RETRO_MEMORY_ROM) {   
+        data = (uint8_t *) content_state_get_ptr()->content_list->entries[0].data;
+    } else {  // other domains  
+        data = (uint8_t *) runloop_state_get_ptr()->current_core.retro_get_memory_data(domain);
+    }
+    if (!data) luaL_error(L, "unable to access memory");
+    return data;
+}
+
+
+
 unsigned int get_memory_domain_arg(lua_State *L, const int DOMAIN_ARG_POS) {
     unsigned int domain = RETRO_MEMORY_SYSTEM_RAM;  // default
-
     if (lua_gettop(L) >= DOMAIN_ARG_POS ) {  // 3 for write functions, 2 for read functions
             // domain arg passed
             const char *domain_str = luaL_checkstring(L, DOMAIN_ARG_POS);
@@ -508,16 +530,8 @@ unsigned int get_memory_domain_arg(lua_State *L, const int DOMAIN_ARG_POS) {
 
 int get_memory_value(lua_State *L, const int BYTES_TO_READ, bool with_sign, bool big_endian) {
     unsigned int domain = get_memory_domain_arg(L, 2);
-    size_t address;
-    uint8_t *data;
-    if(domain == RETRO_MEMORY_ROM) {
-        address = get_memory_address_arg(L, BYTES_TO_READ, domain);    
-        data = (uint8_t *) content_state_get_ptr()->content_list->entries[0].data;
-    } else {  // other domains
-        address = get_memory_address_arg(L, BYTES_TO_READ, domain);    
-        data = (uint8_t *) runloop_state_get_ptr()->current_core.retro_get_memory_data(domain);
-    }
-    if (!data) return luaL_error(L, "unable to access memory");
+    size_t address = get_memory_address_arg(L, BYTES_TO_READ, domain);
+    uint8_t *data = get_memory_ptr(L, domain);
     
     int value;
     
@@ -581,12 +595,31 @@ int memory_writebyte(lua_State *L) {
     const unsigned int domain = get_memory_domain_arg(L, 3);
     const size_t address = get_memory_address_arg(L, 1, domain);
     unsigned int value = (unsigned int)luaL_checkinteger(L, 2);
-
-    uint8_t *data = runloop_state_get_ptr()->current_core.retro_get_memory_data(domain);  
-    if (!data) return luaL_error(L, "unable to access memory");
-    // else
+    uint8_t *data = get_memory_ptr(L, domain);
     
     *(data + address) = (uint8_t)value;
+    return 0;
+}
+
+// void memory.write_bytes_as_array(long addr, nluatable bytes, [string domain = nil])
+// Writes sequential bytes starting at addr.
+int memory_write_bytes_as_array(lua_State *L) {
+    const unsigned int domain = get_memory_domain_arg(L, 3);
+    const size_t address = get_memory_address_arg(L, 1, domain);
+    uint8_t *data = get_memory_ptr(L, domain);
+    
+    luaL_checktype(L, 2, LUA_TTABLE);
+    size_t len = lua_rawlen(L, 2); // Number of elements in the table
+    check_memory_range(L, address, len, domain);  // abort if too long
+    
+    for (size_t i = 1; i <= len; i++)
+    {
+        lua_rawgeti(L, 2, i); // Push table[i] on the stack
+        int byte = luaL_checkinteger(L, -1);
+        lua_pop(L, 1);
+        data[address + i - 1] = (uint8_t)byte;  // truncate if necessary
+    }
+
     return 0;
 }
 
@@ -596,9 +629,9 @@ int memory_readbyterange(lua_State *L) {
     const unsigned int domain = get_memory_domain_arg(L, 3);
     unsigned length = (unsigned)luaL_checkinteger(L, 2);
     const size_t address = get_memory_address_arg(L, length, domain);      
-    const uint8_t *data = runloop_state_get_ptr()->current_core.retro_get_memory_data(domain);  
-    if (!data) return luaL_error(L, "unable to access memory");
-    // else
+    const uint8_t *data = get_memory_ptr(L, domain);
+    
+    check_memory_range(L, address, length, domain);
     
     lua_newtable(L);
     for (unsigned int i = 0; i < length; i++) {
@@ -616,11 +649,9 @@ int memory_hash_region(lua_State *L) {
     const unsigned int domain = get_memory_domain_arg(L, 3);
     unsigned length = (unsigned)luaL_checkinteger(L, 2);
     const size_t address = get_memory_address_arg(L, length, domain);
-
+    uint8_t *data = get_memory_ptr(L, domain);
     
-    const uint8_t *data = runloop_state_get_ptr()->current_core.retro_get_memory_data(domain);  
-    if (!data) return luaL_error(L, "unable to access memory");
-    // else
+    check_memory_range(L, address, length, domain);
     
     char out_hash[256] = {0};
     sha256_hash(out_hash, data+address, length);
@@ -891,10 +922,21 @@ void lua_draw_gfxs_loop() {
     const unsigned buffer_width = video_st->av_info.geometry.base_width;
     const unsigned buffer_height = video_st->av_info.geometry.base_height;
     
-    const float aspect_ratio = video_driver_get_aspect_ratio();
+    //const float aspect_ratio = video_driver_get_aspect_ratio();
     
     video_viewport_t vp = {0}; 
     video_driver_get_viewport_info(&vp);
+    
+    // temp workaround to make sure the viewport offset is reported correctly on the 1st call (needs a better solution) https://github.com/libretro/RetroArch/issues/6454#issuecomment-3460354990
+    gfx_display_draw_text(
+        NULL,
+        ".",
+        convert_to_screen_space(10, 0, 0, 0),
+        convert_to_screen_space(0, 10, 0, 0), //  - (2 * curr_shape->font->size)
+        vp.width, vp.height,
+        0xFFFFFF11,  // semi-invisible via alpha
+        TEXT_ALIGN_LEFT,
+        1.0f, false, 0.0f, true);
 
     // Iterate over the shapes to draw
     for(int i=0; i<LUA_MAX_SHAPES_ONSCREEN; i++) {
@@ -914,14 +956,12 @@ void lua_draw_gfxs_loop() {
             {
                 if(string_is_empty(curr_shape->text)) // empty string
                     continue;
-         
-                // 2FIX: 1st call is not positioned properly?
-                
+                    
                 gfx_display_draw_text(
                     curr_shape->font,
                     curr_shape->text,
                     convert_to_screen_space(1+curr_shape->x, 0, 0, 0),
-                    convert_to_screen_space(0, 1+curr_shape->y, 0, 0), //  - (2 * curr_shape->font->size)
+                    convert_to_screen_space(0, 1+curr_shape->y, 0, 0) - (2 * curr_shape->font->size) + 5,  // why this adjustment is needed?
                     vp.width, vp.height,
                     curr_shape->color,
                     TEXT_ALIGN_LEFT,
@@ -1393,7 +1433,7 @@ static const struct luaL_Reg  memorylib [] = {
     { "writebyte" ,  memory_writebyte },
     { "write_u8" ,  memory_writebyte },
     // TODO: write_s8 / 16/ 32
-    //TODO: { "write_bytes_as_array" ,  memory_write_bytes_as_array },
+    { "write_bytes_as_array" ,  memory_write_bytes_as_array },
     //TODO: { "write_bytes_as_dict" ,  memory_write_bytes_as_dict },
     // FCEUX-aliases
     { "readbyteunsigned" ,  memory_readbyte },
@@ -1401,8 +1441,6 @@ static const struct luaL_Reg  memorylib [] = {
     { "readwordsigned" ,  memory_read_s16_le },
     { "readword" ,  memory_read_u16_le },
     //TODO: { "readfloat" ,  memory_readfloat },
-    //TODO: { "writebyterange" ,  memory_writebyterange },
-    //TODO: { "write_bytes_as_array" ,  memory_write_bytes_as_array },
 	{NULL,NULL}
 };
 
