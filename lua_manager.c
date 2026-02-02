@@ -50,6 +50,8 @@
 #include "menu/menu_driver.h"
 #endif
 
+#define DEFAULT_FONT_SIZE 32
+
 #define RETRO_MEMORY_ROM   9
 // TBA in libretro.h?
 
@@ -621,6 +623,15 @@ int memory_write_bytes_as_array(lua_State *L) {
         lua_pop(L, 1);
         data[address + i - 1] = (uint8_t)byte;  // truncate if necessary
     }
+    
+    /*
+    if (domain == RETRO_MEMORY_ROM) {
+        // need to reload the content with some cores using an extra buffer
+        RARCH_LOG("written: %x  domain: %x\n", address, domain);
+        //command_event(CMD_EVENT_CORE_INFO_DEINIT, NULL);
+        //command_event(CMD_EVENT_CORE_DEINIT, NULL);
+        command_event(CMD_EVENT_CORE_INIT, NULL);
+    }*/
 
     return 0;
 }
@@ -807,6 +818,7 @@ typedef struct gui_shape
     unsigned height;
     char *text;
     font_data_t *font;
+    //gfx_widget_font_data_t font;
     bool convert_coords;
 } gui_shape_t;
 
@@ -840,8 +852,8 @@ static unsigned convert_to_screen_space(unsigned x, unsigned y,
     unsigned fb_w = video_st->av_info.geometry.base_width;
     unsigned fb_h = video_st->av_info.geometry.base_height;
 
-    //RARCH_LOG("screen: %u %u %u %u\n", buffer_width, buffer_height, fb_w, fb_h ) ; 
-    //RARCH_LOG("viewport: %u %u %u %u %u %u \n", vp->x , vp->y, vp->width , vp->height,vp->full_width, vp->full_height ) ; 
+    //RARCH_LOG("screen: %u %u \n", fb_w, fb_h ) ; 
+    //RARCH_LOG("viewport: %u %u %u %u %u %u \n", vp.x , vp.y, vp.width , vp.height,vp.full_width, vp.full_height ) ; 
 
 /*
    gfx_display_t *p_disp      = disp_get_ptr();
@@ -972,16 +984,30 @@ void lua_draw_gfxs_loop() {
                 if(string_is_empty(curr_shape->text)) // empty string
                     continue;
                    
+                /*  not autoscaled:
                 gfx_display_draw_text(
                     curr_shape->font,
                     curr_shape->text,
                     curr_shape->convert_coords ? convert_to_screen_space(1+curr_shape->x, 0, 0, 0) : (curr_shape->x),
-                    curr_shape->convert_coords ? convert_to_screen_space(0, 1+curr_shape->y, 0, 0) : (curr_shape->y),  // - (2 * curr_shape->font->size) + 5,  // why this adjustment is needed?
+                    (curr_shape->convert_coords ? convert_to_screen_space(0, 1+curr_shape->y, 0, 0) : (curr_shape->y)),  // - (2 * curr_shape->font->size)   why this adjustment is needed?
                     vp.width, vp.height,
                     curr_shape->color,
                     TEXT_ALIGN_LEFT,
                     1.0f, false, 0.0f, true);
-                    
+                */
+                gfx_widget_font_data_t font;
+                font.font = (curr_shape->font);  // TODO: move in gui_drawString_impl
+                
+                gfx_widgets_draw_text(
+                     &font,
+                     curr_shape->text,
+                     curr_shape->convert_coords ? convert_to_screen_space(1+curr_shape->x, 0, 0, 0) : (curr_shape->x),
+                     (curr_shape->convert_coords ? convert_to_screen_space(0, 1+curr_shape->y, 0, 0) : (curr_shape->y)) + DEFAULT_FONT_SIZE,
+                     vp.width, vp.height,
+                     curr_shape->color,
+                     TEXT_ALIGN_LEFT,
+                     true);  // draw_outside
+
                 break;
             }
             
@@ -991,10 +1017,10 @@ void lua_draw_gfxs_loop() {
                     continue;
 
                 gfx_widgets_draw_text(
-                     &p_dispwidget->gfx_widget_fonts.regular,  // fixed monospace font
+                     &p_dispwidget->gfx_widget_fonts.regular,  // "regular.ttf" if found. TODO: force monospace pixel font "bitmapfont"
                      curr_shape->text,
                      curr_shape->convert_coords ? convert_to_screen_space(1+curr_shape->x, 0, 0, 0) : (curr_shape->x),
-                     curr_shape->convert_coords ? convert_to_screen_space(0, 1+curr_shape->y, 0, 0) : (curr_shape->y),
+                     (curr_shape->convert_coords ? convert_to_screen_space(0, 1+curr_shape->y, 0, 0) : (curr_shape->y)) + DEFAULT_FONT_SIZE,
                      vp.width, vp.height,
                      curr_shape->color,
                      TEXT_ALIGN_LEFT,
@@ -1190,22 +1216,21 @@ int gui_drawString_impl(lua_State *L, bool convert_coords) {
 
     // apply font and scaling
     settings_t *settings            = config_get_ptr();
-    //float DEFAULT_FONT_SIZE = 12;
-    const float DEFAULT_FONT_SIZE = 32.0f;  // BASE_FONT_SIZE as defined in gfx_widgets.c
+    //const float DEFAULT_FONT_SIZE = 32.0f;  // BASE_FONT_SIZE as defined in gfx_widgets.c
     //float DEFAULT_FONT_SIZE = settings->floats.video_font_size;
     const char* DEFAULT_FONT_FACE = settings->paths.path_font;
-    /*
+    //RARCH_LOG("DEFAULT_FONT_FACE: %s\n", DEFAULT_FONT_FACE);
+    /*not needed, empty string is fine
     if(string_is_empty(DEFAULT_FONT_FACE)) {         
+        //DEFAULT_FONT_FACE = "regular.ttf";
         //DEFAULT_FONT_FACE = p_dispwidget->ozone_regular_font_path;  // sans-serif font, as defined in gfx_widgets.c
-        //DEFAULT_FONT_FACE = p_dispwidget->gfx_widget_fonts.regular.font;  // monospace font
     }*/
-    //RARCH_LOG("path_font: %s\n", DEFAULT_FONT_FACE);
-    //RARCH_LOG("video_font_size: %f\n", settings->floats.video_font_size);
     
     float font_size = luaL_optinteger(L, 6, DEFAULT_FONT_SIZE);
     char* font_face = luaL_optstring(L, 7, DEFAULT_FONT_FACE);
     if(curr_shape->font) {
         free(curr_shape->font);
+        //gfx_widgets_font_free(curr_shape->font);
         curr_shape->font = NULL;
     }
     
@@ -1216,14 +1241,20 @@ int gui_drawString_impl(lua_State *L, bool convert_coords) {
     //menu_handle_t *menu  = menu_state_get_ptr()->driver_data;
     //float dpi = menu_input_get_dpi(menu, disp_get_ptr(), video_st->width, video_st->height);
     
-    curr_shape->font = gfx_display_font_file(disp_get_ptr(), font_face, font_size, false);
+    //RARCH_LOG("path_font: %s\n", font_face);
+    //RARCH_LOG("video_font_size: %f\n", font_size);
+    
+    //gfx_widget_font_data_t *font_regular
+    curr_shape->font = gfx_display_font_file(disp_get_ptr(), font_face, font_size, video_driver_is_threaded());
     if(curr_shape->font == NULL) RARCH_ERR("cannot load font: %s\n", font_face);
+
+    //gfx_widgets_font_init(disp_get_ptr(), dispwidget_get_ptr(), curr_shape->font, false, font_face, font_size);
     
     // adjust y coord padding?
     //unsigned widget_padding = dispwidget_get_ptr()->simple_widget_padding;
     //curr_shape->y += widget_padding;
     //curr_shape->y += (curr_shape->font_size);
-    curr_shape->y += DEFAULT_FONT_SIZE;
+    //curr_shape->y += DEFAULT_FONT_SIZE;
     
     curr_shape->convert_coords = convert_coords;
     

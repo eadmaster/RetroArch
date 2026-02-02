@@ -1848,9 +1848,6 @@ void gfx_widgets_frame(void *data)
       slock_unlock(p_dispwidget->current_msgs_lock);
 #endif
    }
-#ifdef HAVE_LUA
-   lua_draw_gfxs_loop();
-#endif
 
    /* Ensure all text is flushed */
    gfx_widgets_flush_text(video_width, video_height,
@@ -1864,6 +1861,10 @@ void gfx_widgets_frame(void *data)
    font_driver_bind_block(p_dispwidget->gfx_widget_fonts.regular.font, NULL);
    font_driver_bind_block(p_dispwidget->gfx_widget_fonts.bold.font, NULL);
    font_driver_bind_block(p_dispwidget->gfx_widget_fonts.msg_queue.font, NULL);
+
+#ifdef HAVE_LUA
+   lua_draw_gfxs_loop();
+#endif
 
    if (video_st->current_video && video_st->current_video->set_viewport)
       video_st->current_video->set_viewport(
