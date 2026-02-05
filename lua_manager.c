@@ -50,11 +50,6 @@
 #include "menu/menu_driver.h"
 #endif
 
-#define DEFAULT_FONT_SIZE 32
-
-#define RETRO_MEMORY_ROM   9
-// TBA in libretro.h?
-
 
 // LUA API based on Bizhawk https://tasvideos.org/Bizhawk/LuaFunctions
 
@@ -465,21 +460,24 @@ bool using_hw_framebuffer() {
 }
 
 
-int check_memory_range(lua_State *L, const size_t start_address, const size_t len, const unsigned int domain) {
-    size_t memsize;
-    if(domain == RETRO_MEMORY_ROM)
+size_t check_memory_range(lua_State *L, const size_t start_address, const size_t len, const unsigned int domain) {
+
+    runloop_state_t *runloop_st = runloop_state_get_ptr(); 
+    size_t memsize = runloop_st->current_core.retro_get_memory_size(domain);
+    
+    if(memsize == 0 && domain == RETRO_MEMORY_ROM)
     {
+        // fallback to frontend buffer (read-only)
         content_state_t *p_content = content_state_get_ptr();
         memsize = p_content->content_list->entries[0].data_size;    
-    } else {  // other domains
-        runloop_state_t *runloop_st = runloop_state_get_ptr(); 
-        memsize = runloop_st->current_core.retro_get_memory_size(domain);
     }
-    
+
     if((start_address + len - 1) > memsize) {
         //RARCH_ERR("address out of bounds: %d > %d\n", address, memsize );
         return luaL_error(L, "memory address out of bounds");
     }
+    
+    return memsize;  // no error
 }
 
 size_t get_memory_address_arg(lua_State *L, const size_t BYTES_TO_READ, const unsigned int domain) {    
@@ -500,31 +498,49 @@ size_t get_memory_address_arg(lua_State *L, const size_t BYTES_TO_READ, const un
 }
 
 uint8_t* get_memory_ptr(lua_State *L, const unsigned int domain) {
-    uint8_t *data;
-    if(domain == RETRO_MEMORY_ROM) {   
+    uint8_t *data = (uint8_t *) runloop_state_get_ptr()->current_core.retro_get_memory_data(domain);  // core-provided pointer
+        
+    if(!data && domain == RETRO_MEMORY_ROM) {   
+        // fallback to frontend buffer (read-only)
         data = (uint8_t *) content_state_get_ptr()->content_list->entries[0].data;
-    } else {  // other domains  
-        data = (uint8_t *) runloop_state_get_ptr()->current_core.retro_get_memory_data(domain);
     }
+
+    /* TODO: try retro_memory_map
+    // RC_MEMORY_TYPE_READONLY, "Cartridge ROM"
+      for (i = 0; i < console_regions->num_regions; ++i) {
+    const rc_memory_region_t* console_region = &console_regions->region[i];
+    const size_t console_region_size = console_region->end_address - console_region->start_address + 1;
+    const uint32_t type = rc_libretro_memory_console_region_to_ram_type(console_region->type);
+    uint32_t base_address = 0;
+    #endif
+    */
+    
     if (!data) luaL_error(L, "unable to access memory");
     return data;
 }
 
 
-
 unsigned int get_memory_domain_arg(lua_State *L, const int DOMAIN_ARG_POS) {
     unsigned int domain = RETRO_MEMORY_SYSTEM_RAM;  // default
     if (lua_gettop(L) >= DOMAIN_ARG_POS ) {  // 3 for write functions, 2 for read functions
-            // domain arg passed
-            const char *domain_str = luaL_checkstring(L, DOMAIN_ARG_POS);
-            if(strcasestr(domain_str, "vram") != NULL) {  // case-insensitive substring check
-                // only vram domain is supported by now
+            const char *domain_str = luaL_checkstring(L, DOMAIN_ARG_POS);  // domain arg passed
+            if(strcasecmp(domain_str, "RAM")==0 || strcasecmp(domain_str, "WRAM")==0 || strcasecmp(domain_str, "Main Memory")==0) {
+                domain = RETRO_MEMORY_SYSTEM_RAM;
+            }
+            else if(strcasestr(domain_str, "VRAM") != NULL) {  // also matches "VRAM1"
                 domain = RETRO_MEMORY_VIDEO_RAM;
             }
-            else if(strcasestr(domain_str, "rom") != NULL) {  // case-insensitive substring check
+            else if(strcasecmp(domain_str, "ROM")==0 || strcasecmp(domain_str, "CARTROM")==0) {
                 domain = RETRO_MEMORY_ROM;
             }
-            // TODO: add more memory domains
+            else if(strcasecmp(domain_str, "SaveRAM")==0 || strcasecmp(domain_str, "Battery RAM")==0 || strcasecmp(domain_str, "CARTRAM")==0) {
+                domain = RETRO_MEMORY_SAVE_RAM;
+            }
+            else if(strcasecmp(domain_str, "RTC")==0) {
+                domain = RETRO_MEMORY_RTC;
+            } else {
+                return luaL_error(L, "unsupported memory domain");
+            }
     }
     if(domain == RETRO_MEMORY_VIDEO_RAM && using_hw_framebuffer()) {
         return luaL_error(L, "cannot access hardware framebuffer");
@@ -537,7 +553,7 @@ int get_memory_value(lua_State *L, const int BYTES_TO_READ, bool with_sign, bool
     size_t address = get_memory_address_arg(L, BYTES_TO_READ, domain);
     uint8_t *data = get_memory_ptr(L, domain);
     
-    int value;
+    int value = 0;
     
     if(BYTES_TO_READ == 1 && with_sign == false)
         value = (uint8_t) *(data+address);
@@ -623,15 +639,6 @@ int memory_write_bytes_as_array(lua_State *L) {
         lua_pop(L, 1);
         data[address + i - 1] = (uint8_t)byte;  // truncate if necessary
     }
-    
-    /*
-    if (domain == RETRO_MEMORY_ROM) {
-        // need to reload the content with some cores using an extra buffer
-        RARCH_LOG("written: %x  domain: %x\n", address, domain);
-        //command_event(CMD_EVENT_CORE_INFO_DEINIT, NULL);
-        //command_event(CMD_EVENT_CORE_DEINIT, NULL);
-        command_event(CMD_EVENT_CORE_INIT, NULL);
-    }*/
 
     return 0;
 }
@@ -654,6 +661,44 @@ int memory_readbyterange(lua_State *L) {
     }
     return 1;
 }
+
+
+// nluatable memory.getmemorydomainlist()
+// Returns a string of the memory domains for the loaded platform core. List will be a single string delimited by line feeds
+int memory_getmemorydomainlist(lua_State *L) {
+    const unsigned int domains_list_values[] = { RETRO_MEMORY_SAVE_RAM, RETRO_MEMORY_RTC, RETRO_MEMORY_SYSTEM_RAM, RETRO_MEMORY_VIDEO_RAM, RETRO_MEMORY_ROM  };
+    const char* domains_list_names[] = { "Battery RAM", "RTC", "RAM", "VRAM", "ROM" };
+    const unsigned domain_count = sizeof(domains_list_values) / sizeof(domains_list_values[0]);
+    // create return table
+    lua_newtable(L);
+    int table_index = 1;
+
+    for (unsigned int i = 0; i < domain_count; i++)
+    {
+        unsigned int domain = domains_list_values[i];
+
+        //if( get_memory_ptr(L, domain) != NULL ) // throw errors
+        if( runloop_state_get_ptr()->current_core.retro_get_memory_data(domain) )
+        {
+            // current domain is supported for current core
+            lua_pushinteger(L, table_index++);
+            lua_pushstring(L, domains_list_names[i]);
+            lua_settable(L, -3);
+        }
+    }
+    
+   return 1;
+}
+
+
+// uint memory.getmemorydomainsize([string name = ])
+// Returns the number of bytes of the specified memory domain. If no domain is specified, or the specified domain doesn't exist, returns the current domain size
+int memory_getmemorydomainsize(lua_State *L) {
+   const unsigned int domain = get_memory_domain_arg(L, 1);
+   lua_pushinteger(L, (lua_Integer)check_memory_range(L, 1, 1, domain));  // lua_pushunsigned is deprecated
+   return 1;
+}
+
 
 // string memory.hash_region(long addr, int count, [string domain = nil])
 // Returns a hash as a string of a region of memory, starting from addr, through count bytes. If the domain is unspecified, it uses the current region.
@@ -817,8 +862,8 @@ typedef struct gui_shape
     unsigned width;
     unsigned height;
     char *text;
-    font_data_t *font;
-    //gfx_widget_font_data_t font;
+    //font_data_t *font;
+    gfx_widget_font_data_t font;
     bool convert_coords;
 } gui_shape_t;
 
@@ -862,7 +907,7 @@ static unsigned convert_to_screen_space(unsigned x, unsigned y,
   */
   
   // TODO: try as alternative:
-  /* https://github.com/libretro/RetroArch/blob/6217684ade58502340f2eb9dbdfdba3d3340fa70/gfx/video_driver.c#L693
+  /*
   video_driver_translate_coord_viewport(
       struct video_viewport *vp,
       int mouse_x,           int mouse_y,
@@ -951,8 +996,8 @@ void lua_draw_gfxs_loop() {
     
     //const float aspect_ratio = video_driver_get_aspect_ratio();
     
-    video_viewport_t vp = {0}; 
-    video_driver_get_viewport_info(&vp);
+    //video_viewport_t vp = {0}; 
+    //video_driver_get_viewport_info(&vp);
     
     // temp workaround to make sure the viewport offset is reported correctly on the 1st call (needs a better solution) https://github.com/libretro/RetroArch/issues/6454#issuecomment-3460354990
     gfx_display_draw_text(
@@ -960,11 +1005,13 @@ void lua_draw_gfxs_loop() {
         ".",
         convert_to_screen_space(10, 0, 0, 0),
         convert_to_screen_space(0, 10, 0, 0), //  - (2 * curr_shape->font->size)
-        vp.width, vp.height,
+        video_width, video_height,
         0xFFFFFF11,  // semi-invisible via alpha
         TEXT_ALIGN_LEFT,
         1.0f, false, 0.0f, true);
-
+    
+    const float DEFAULT_FONT_SIZE = config_get_ptr()->floats.video_font_size;
+    
     // Iterate over the shapes to draw
     for(int i=0; i<LUA_MAX_SHAPES_ONSCREEN; i++) {
         
@@ -984,26 +1031,24 @@ void lua_draw_gfxs_loop() {
                 if(string_is_empty(curr_shape->text)) // empty string
                     continue;
                    
-                /*  not autoscaled:
+                /*
                 gfx_display_draw_text(
-                    curr_shape->font,
+                    curr_shape->font.font,
                     curr_shape->text,
                     curr_shape->convert_coords ? convert_to_screen_space(1+curr_shape->x, 0, 0, 0) : (curr_shape->x),
-                    (curr_shape->convert_coords ? convert_to_screen_space(0, 1+curr_shape->y, 0, 0) : (curr_shape->y)),  // - (2 * curr_shape->font->size)   why this adjustment is needed?
-                    vp.width, vp.height,
+                    (curr_shape->convert_coords ? convert_to_screen_space(0, 1+curr_shape->y, 0, 0) : (curr_shape->y)) + curr_shape->font.font->size,
+                    video_width, video_height,
                     curr_shape->color,
                     TEXT_ALIGN_LEFT,
                     1.0f, false, 0.0f, true);
                 */
-                gfx_widget_font_data_t font;
-                font.font = (curr_shape->font);  // TODO: move in gui_drawString_impl
                 
                 gfx_widgets_draw_text(
-                     &font,
+                     &(curr_shape->font),
                      curr_shape->text,
                      curr_shape->convert_coords ? convert_to_screen_space(1+curr_shape->x, 0, 0, 0) : (curr_shape->x),
-                     (curr_shape->convert_coords ? convert_to_screen_space(0, 1+curr_shape->y, 0, 0) : (curr_shape->y)) + DEFAULT_FONT_SIZE,
-                     vp.width, vp.height,
+                     (curr_shape->convert_coords ? convert_to_screen_space(0, 1+curr_shape->y, 0, 0) : (curr_shape->y)) + curr_shape->font.font->size,
+                     video_width, video_height,
                      curr_shape->color,
                      TEXT_ALIGN_LEFT,
                      true);  // draw_outside
@@ -1017,11 +1062,11 @@ void lua_draw_gfxs_loop() {
                     continue;
 
                 gfx_widgets_draw_text(
-                     &p_dispwidget->gfx_widget_fonts.regular,  // "regular.ttf" if found. TODO: force monospace pixel font "bitmapfont"
+                     &(curr_shape->font),
                      curr_shape->text,
                      curr_shape->convert_coords ? convert_to_screen_space(1+curr_shape->x, 0, 0, 0) : (curr_shape->x),
                      (curr_shape->convert_coords ? convert_to_screen_space(0, 1+curr_shape->y, 0, 0) : (curr_shape->y)) + DEFAULT_FONT_SIZE,
-                     vp.width, vp.height,
+                     video_width, video_height,
                      curr_shape->color,
                      TEXT_ALIGN_LEFT,
                      true);  // draw_outside
@@ -1054,7 +1099,7 @@ void lua_draw_gfxs_loop() {
                      curr_shape->convert_coords ? convert_to_screen_space(0, 1+curr_shape->y, 0, 0) : (curr_shape->y),
                      convert_to_screen_space(0, 0, 1+curr_shape->width, 0),
                      convert_to_screen_space(0, 0, 0, 1+curr_shape->height),
-                     vp.width, vp.height,
+                     video_width, video_height,
                      curr_quad_bg_color,
                      NULL);
                      
@@ -1169,6 +1214,11 @@ int gui_drawPixelText_impl(lua_State *L, bool convert_coords) {
     curr_shape->bg_color = read_color_arg(L, 5, 0x000000FF); // default black, fully opaque
     
     //curr_shape->font_face = luaL_optstring(L, 6, "");  // unused
+    if(curr_shape->font.font && curr_shape->font.font != dispwidget_get_ptr()->gfx_widget_fonts.regular.font) {  // TODO: better comparison
+        free(curr_shape->font.font);  // free custom font
+    }
+    //curr_shape->font = dispwidget_get_ptr()->gfx_widget_fonts.regular;
+    curr_shape->font.font = NULL;  // force using bitmap font
     
     curr_shape->convert_coords = convert_coords;
     
@@ -1212,41 +1262,49 @@ int gui_drawString_impl(lua_State *L, bool convert_coords) {
     curr_shape->bg_color = read_color_arg(L, 5, 0x000000FF); // default black, fully opaque
      
     // default font
-    //dispgfx_widget_t *p_dispwidget = dispwidget_get_ptr();
+    dispgfx_widget_t *p_dispwidget = dispwidget_get_ptr();
 
     // apply font and scaling
     settings_t *settings            = config_get_ptr();
     //const float DEFAULT_FONT_SIZE = 32.0f;  // BASE_FONT_SIZE as defined in gfx_widgets.c
-    //float DEFAULT_FONT_SIZE = settings->floats.video_font_size;
-    const char* DEFAULT_FONT_FACE = settings->paths.path_font;
+    const float DEFAULT_FONT_SIZE = settings->floats.video_font_size;  // defaults to 32
+    //RARCH_LOG("DEFAULT_FONT_SIZE: %f\n", DEFAULT_FONT_SIZE);
+    const char* DEFAULT_FONT_FACE = settings->paths.path_font;  // defaults to ""
     //RARCH_LOG("DEFAULT_FONT_FACE: %s\n", DEFAULT_FONT_FACE);
-    /*not needed, empty string is fine
-    if(string_is_empty(DEFAULT_FONT_FACE)) {         
-        //DEFAULT_FONT_FACE = "regular.ttf";
-        //DEFAULT_FONT_FACE = p_dispwidget->ozone_regular_font_path;  // sans-serif font, as defined in gfx_widgets.c
-    }*/
     
     float font_size = luaL_optinteger(L, 6, DEFAULT_FONT_SIZE);
     char* font_face = luaL_optstring(L, 7, DEFAULT_FONT_FACE);
-    if(curr_shape->font) {
-        free(curr_shape->font);
+    //char* font_face = luaL_optstring(L, 7, "");
+    
+    if(curr_shape->font.font && curr_shape->font.font != p_dispwidget->gfx_widget_fonts.regular.font) {  // TODO: better comparison
+        free(curr_shape->font.font);  // free custom font
         //gfx_widgets_font_free(curr_shape->font);
-        curr_shape->font = NULL;
     }
+    curr_shape->font.font = NULL;
     
     // font size dpi-aware
     // MEMO: scale_factor = dpi / REFERENCE_DPI = dpi / 96.0f;
     //float dpi_scale             = dispwidget_get_ptr()->last_scale_factor;
     //RARCH_LOG("detected dpi: %f\n", dpi_scale);   
     //menu_handle_t *menu  = menu_state_get_ptr()->driver_data;
+    //video_driver_state_t *video_st = video_state_get_ptr();     
     //float dpi = menu_input_get_dpi(menu, disp_get_ptr(), video_st->width, video_st->height);
-    
+    //float last_scale_factor                     = gfx_display_get_dpi_scale(disp_get_ptr(), config_get_ptr(), video_st->width, video_st->height, false, false);
+    //RARCH_LOG("last_scale_factor: %f\n", last_scale_factor);   
+         
     //RARCH_LOG("path_font: %s\n", font_face);
     //RARCH_LOG("video_font_size: %f\n", font_size);
     
     //gfx_widget_font_data_t *font_regular
-    curr_shape->font = gfx_display_font_file(disp_get_ptr(), font_face, font_size, video_driver_is_threaded());
-    if(curr_shape->font == NULL) RARCH_ERR("cannot load font: %s\n", font_face);
+    if(strcasecmp(font_face, DEFAULT_FONT_FACE)!=0 || font_size!=DEFAULT_FONT_SIZE) {
+    //if(!string_is_empty(font_face) || font_size!=DEFAULT_FONT_SIZE) {
+        curr_shape->font.font = gfx_display_font_file(disp_get_ptr(), font_face, font_size, video_driver_is_threaded());
+        if(curr_shape->font.font == NULL) RARCH_ERR("cannot load font: %s\n", font_face);
+        // TODO: need to init other fields?
+    }
+    if(curr_shape->font.font == NULL) {
+        curr_shape->font = p_dispwidget->gfx_widget_fonts.regular;  // copy all struct fields
+    }
 
     //gfx_widgets_font_init(disp_get_ptr(), dispwidget_get_ptr(), curr_shape->font, false, font_face, font_size);
     
@@ -1346,7 +1404,6 @@ int gui_drawPixel(lua_State *L) {
     
     return 0;
 }
-
 
 #endif
 
@@ -1512,6 +1569,10 @@ static const struct luaL_Reg  memorylib [] = {
     // TODO: read_u/s32_be(le
     { "readbyterange" ,  memory_readbyterange },
     { "read_bytes_as_array" ,  memory_readbyterange },
+    // TODO: memory.getcurrentmemorydomain
+    // TODO:memory.getcurrentmemorydomainsize
+    { "getmemorydomainlist" ,  memory_getmemorydomainlist },
+    { "getmemorydomainsize" ,  memory_getmemorydomainsize },
     { "hash_region" ,  memory_hash_region },
     { "writebyte" ,  memory_writebyte },
     { "write_u8" ,  memory_writebyte },
