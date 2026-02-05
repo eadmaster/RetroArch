@@ -976,13 +976,11 @@ void lua_draw_gfxs_loop() {
       if (menu_open) return;
 #endif
     
-    dispgfx_widget_t *p_dispwidget = dispwidget_get_ptr();
-    //if (!font) puts("empty font data");
-
+    //dispgfx_widget_t *p_dispwidget = dispwidget_get_ptr();
     //bool widgets_active            = p_dispwidget->active;
     // TODO :Check if active
     
-    video_driver_state_t *video_st = video_state_get_ptr();     
+    //video_driver_state_t *video_st = video_state_get_ptr();     
     void *userdata                   = video_driver_get_ptr();
     //void *userdata = VIDEO_DRIVER_GET_PTR_INTERNAL(video_st);
     gfx_display_t *p_disp      = disp_get_ptr();
@@ -991,8 +989,8 @@ void lua_draw_gfxs_loop() {
     unsigned video_height;  // video_st->height;
     video_driver_get_size(&video_width, &video_height);
    
-    const unsigned buffer_width = video_st->av_info.geometry.base_width;
-    const unsigned buffer_height = video_st->av_info.geometry.base_height;
+    //const unsigned buffer_width = video_st->av_info.geometry.base_width;
+    //const unsigned buffer_height = video_st->av_info.geometry.base_height;
     
     //const float aspect_ratio = video_driver_get_aspect_ratio();
     
@@ -1021,55 +1019,39 @@ void lua_draw_gfxs_loop() {
         {
             case SHAPE_UNUSED:
             {
-                //continue;
-                //break;
-                return;  // fastest, but may skip some shapes if the buffer is full
+                //return;  // fastest, but may skip some shapes if the buffer is full
+                continue;
             }
             
             case SHAPE_TEXT:
-            {
-                if(string_is_empty(curr_shape->text)) // empty string
-                    continue;
-                   
-                /*
-                gfx_display_draw_text(
-                    curr_shape->font.font,
-                    curr_shape->text,
-                    curr_shape->convert_coords ? convert_to_screen_space(1+curr_shape->x, 0, 0, 0) : (curr_shape->x),
-                    (curr_shape->convert_coords ? convert_to_screen_space(0, 1+curr_shape->y, 0, 0) : (curr_shape->y)) + curr_shape->font.font->size,
-                    video_width, video_height,
-                    curr_shape->color,
-                    TEXT_ALIGN_LEFT,
-                    1.0f, false, 0.0f, true);
-                */
-                
-                gfx_widgets_draw_text(
-                     &(curr_shape->font),
-                     curr_shape->text,
-                     curr_shape->convert_coords ? convert_to_screen_space(1+curr_shape->x, 0, 0, 0) : (curr_shape->x),
-                     (curr_shape->convert_coords ? convert_to_screen_space(0, 1+curr_shape->y, 0, 0) : (curr_shape->y)) + curr_shape->font.font->size,
-                     video_width, video_height,
-                     curr_shape->color,
-                     TEXT_ALIGN_LEFT,
-                     true);  // draw_outside
-
-                break;
-            }
-            
             case SHAPE_PIXELTEXT:
             {
                 if(string_is_empty(curr_shape->text)) // empty string
                     continue;
-
+                   
+                gfx_display_draw_text(
+                    curr_shape->font.font,
+                    curr_shape->text,
+                    curr_shape->convert_coords ? convert_to_screen_space(1+curr_shape->x, 0, 0, 0) : (curr_shape->x),
+                    (curr_shape->convert_coords ? convert_to_screen_space(0, 1+curr_shape->y, 0, 0) : (curr_shape->y)) 
+                        + (curr_shape->font.font ? curr_shape->font.font->size : DEFAULT_FONT_SIZE),
+                    video_width, video_height,
+                    curr_shape->color,
+                    TEXT_ALIGN_LEFT,
+                    1.0f, false, 0.0f, true);
+                                
+                /*
                 gfx_widgets_draw_text(
                      &(curr_shape->font),
                      curr_shape->text,
                      curr_shape->convert_coords ? convert_to_screen_space(1+curr_shape->x, 0, 0, 0) : (curr_shape->x),
-                     (curr_shape->convert_coords ? convert_to_screen_space(0, 1+curr_shape->y, 0, 0) : (curr_shape->y)) + DEFAULT_FONT_SIZE,
+                     (curr_shape->convert_coords ? convert_to_screen_space(0, 1+curr_shape->y, 0, 0) : (curr_shape->y))
+                        + (curr_shape->font.font ? curr_shape->font.font->size : DEFAULT_FONT_SIZE),
                      video_width, video_height,
                      curr_shape->color,
                      TEXT_ALIGN_LEFT,
                      true);  // draw_outside
+                */
 
                 break;
             }
@@ -1213,12 +1195,12 @@ int gui_drawPixelText_impl(lua_State *L, bool convert_coords) {
     curr_shape->color = read_color_arg(L, 4, 0xFFFFFFFF); // default white, fully opaque
     curr_shape->bg_color = read_color_arg(L, 5, 0x000000FF); // default black, fully opaque
     
-    //curr_shape->font_face = luaL_optstring(L, 6, "");  // unused
+    //curr_shape->font_face = luaL_optstring(L, 6, "");  // unused for drawPixelText
     if(curr_shape->font.font && curr_shape->font.font != dispwidget_get_ptr()->gfx_widget_fonts.regular.font) {  // TODO: better comparison
         free(curr_shape->font.font);  // free custom font
     }
     //curr_shape->font = dispwidget_get_ptr()->gfx_widget_fonts.regular;
-    curr_shape->font.font = NULL;  // force using bitmap font
+    curr_shape->font.font = NULL;  // TODO: force using bitmap font
     
     curr_shape->convert_coords = convert_coords;
     
@@ -1267,7 +1249,7 @@ int gui_drawString_impl(lua_State *L, bool convert_coords) {
     // apply font and scaling
     settings_t *settings            = config_get_ptr();
     //const float DEFAULT_FONT_SIZE = 32.0f;  // BASE_FONT_SIZE as defined in gfx_widgets.c
-    const float DEFAULT_FONT_SIZE = settings->floats.video_font_size;  // defaults to 32
+    const float DEFAULT_FONT_SIZE = settings->floats.video_font_size;
     //RARCH_LOG("DEFAULT_FONT_SIZE: %f\n", DEFAULT_FONT_SIZE);
     const char* DEFAULT_FONT_FACE = settings->paths.path_font;  // defaults to ""
     //RARCH_LOG("DEFAULT_FONT_FACE: %s\n", DEFAULT_FONT_FACE);
@@ -1296,18 +1278,40 @@ int gui_drawString_impl(lua_State *L, bool convert_coords) {
     //RARCH_LOG("video_font_size: %f\n", font_size);
     
     //gfx_widget_font_data_t *font_regular
-    if(strcasecmp(font_face, DEFAULT_FONT_FACE)!=0 || font_size!=DEFAULT_FONT_SIZE) {
+    
     //if(!string_is_empty(font_face) || font_size!=DEFAULT_FONT_SIZE) {
-        curr_shape->font.font = gfx_display_font_file(disp_get_ptr(), font_face, font_size, video_driver_is_threaded());
+    if(strcasecmp(font_face, DEFAULT_FONT_FACE)!=0 || font_size!=DEFAULT_FONT_SIZE) {
+        char fontpath[PATH_MAX_LENGTH] = {0};
+        if(!string_is_empty(font_face))
+        {
+            static const char *font_path_prefix = {
+                #if defined(_WIN32)
+                   "C:\\Windows\\Fonts\\"
+                #elif defined(__APPLE__)
+                   "/Library/Fonts/"
+                #elif defined(__ANDROID_API__)
+                   "/system/fonts/"
+                #elif defined(WEBOS)
+                  "/usr/share/fonts/"
+                #else
+                  "/usr/share/fonts/TTF/"
+                #endif
+                   ""
+            };
+            fill_pathname_join_special(fontpath, font_path_prefix, font_face, sizeof(fontpath));
+            strcat(fontpath, ".ttf");
+        }
+
+        curr_shape->font.font = gfx_display_font_file(disp_get_ptr(), fontpath, font_size, video_driver_is_threaded());
         if(curr_shape->font.font == NULL) RARCH_ERR("cannot load font: %s\n", font_face);
         // TODO: need to init other fields?
     }
+    
     if(curr_shape->font.font == NULL) {
+        // fallback to the default font
         curr_shape->font = p_dispwidget->gfx_widget_fonts.regular;  // copy all struct fields
     }
 
-    //gfx_widgets_font_init(disp_get_ptr(), dispwidget_get_ptr(), curr_shape->font, false, font_face, font_size);
-    
     // adjust y coord padding?
     //unsigned widget_padding = dispwidget_get_ptr()->simple_widget_padding;
     //curr_shape->y += widget_padding;
@@ -1695,8 +1699,9 @@ void lua_init() {
     
     // Load full stdlib
     luaL_openlibs(L);
-    
+
 #ifdef LUA_SCRIPTS_SANDBOXED
+    // TODO: turn into a user setting
     // override unsafe functions
     // io.open
     lua_getglobal(L, "io");
@@ -1715,15 +1720,15 @@ void lua_init() {
         lua_pushstring(L, "execute");
         lua_pushnil(L);
         lua_settable(L, -3);
-        // TODO: safe wrappers for : os.remove(filename), os.rename(old, new)
+        // Not needed? os.remove(filename), os.rename(old, new)
     }
     lua_pop(L, 1);
 
     // Disable risky loaders
-    lua_pushnil(L); lua_setglobal(L, "dofile");
-    lua_pushnil(L); lua_setglobal(L, "loadfile");
-    lua_pushnil(L); lua_setglobal(L, "require");
-    lua_pushnil(L); lua_setglobal(L, "load");  // disables eval-like dynamic code
+    //lua_pushnil(L); lua_setglobal(L, "dofile");
+    //lua_pushnil(L); lua_setglobal(L, "loadfile");
+    //lua_pushnil(L); lua_setglobal(L, "require");
+    //lua_pushnil(L); lua_setglobal(L, "load");  // disables eval-like dynamic code
 #endif
 
     // register custom C functions
