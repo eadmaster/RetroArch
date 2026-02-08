@@ -1,5 +1,5 @@
 /*  RetroArch - A frontend for libretro.
- *  Copyright (C) 2025 - eadmaster
+ *  Copyright (C) 2025-2026 The RetroArch team
  * 
  *  RetroArch is free software: you can redistribute it and/or modify it under the terms
  *  of the GNU General Public License as published by the Free Software Found-
@@ -45,6 +45,7 @@
 #include "gfx/video_display_server.h"
 #include "gfx/gfx_widgets.h"
 #include "tasks/tasks_internal.h"
+#include "gfx/drivers_font_renderer/bitmap.h"
 #ifdef HAVE_MENU
 #include "menu/menu_input.h"
 #include "menu/menu_driver.h"
@@ -460,25 +461,66 @@ bool using_hw_framebuffer() {
 }
 
 
-size_t check_memory_range(lua_State *L, const size_t start_address, const size_t len, const unsigned int domain) {
 
-    runloop_state_t *runloop_st = runloop_state_get_ptr(); 
-    size_t memsize = runloop_st->current_core.retro_get_memory_size(domain);
+struct retro_memory_descriptor* find_memory_descriptor(const unsigned int domain) {
+    rarch_memory_map_t *mmaps = &runloop_state_get_ptr()->system.mmaps;
+    bool found = false;
+    for (unsigned i = 0; i < mmaps->num_descriptors; i++) {
+        struct retro_memory_descriptor *desc = &mmaps->descriptors[i].core;
+        //printf("mmaps: name=%s, len=%u, flags=%u\n", desc->addrspace, desc->len, desc->flags );
+        switch (domain)
+        {
+            // check RETRO_MEMDESC* flags
+            case RETRO_MEMORY_SYSTEM_RAM:
+                if (desc->flags & RETRO_MEMDESC_SYSTEM_RAM) found = true;
+                break;
+            case RETRO_MEMORY_SAVE_RAM:
+                if(desc->flags & RETRO_MEMDESC_SAVE_RAM) found = true;
+                break;
+            case RETRO_MEMORY_VIDEO_RAM:
+                if(desc->flags & RETRO_MEMDESC_VIDEO_RAM) found = true;
+                break;
+            case RETRO_MEMORY_ROM:
+                if(desc->flags & RETRO_MEMDESC_CONST) found = true;  // not 100% reliable, also used for BIOS
+            default:
+                break;
+        }
+        if(found)
+            return(desc);
+    }
+    // else
+    return NULL;
+}
+
+
+size_t get_memory_size(const unsigned int domain) {
+    size_t memsize = runloop_state_get_ptr()->current_core.retro_get_memory_size(domain);
+    
+    if(memsize == 0)
+    {
+        // try using MEMORY_MAPS Memory Descriptors
+        struct retro_memory_descriptor* desc = find_memory_descriptor(domain);
+        if(desc)
+            memsize = desc->len;
+    }
     
     if(memsize == 0 && domain == RETRO_MEMORY_ROM)
     {
         // fallback to frontend buffer (read-only)
-        content_state_t *p_content = content_state_get_ptr();
-        memsize = p_content->content_list->entries[0].data_size;    
-    }
-
-    if((start_address + len - 1) > memsize) {
-        //RARCH_ERR("address out of bounds: %d > %d\n", address, memsize );
-        return luaL_error(L, "memory address out of bounds");
+        memsize = content_state_get_ptr()->content_list->entries[0].data_size;    
     }
     
-    return memsize;  // no error
+    return memsize;
 }
+
+void check_memory_range(lua_State *L, const size_t start_address, const size_t len, const unsigned int domain) {
+    size_t memsize = get_memory_size(domain);
+    if((start_address + len - 1) > memsize) {
+        //RARCH_ERR("address out of bounds: %d > %d\n", start_address, memsize );
+        luaL_error(L, "memory address out of bounds");
+    }
+}
+
 
 size_t get_memory_address_arg(lua_State *L, const size_t BYTES_TO_READ, const unsigned int domain) {    
     size_t address = (size_t)luaL_checkinteger(L, 1);
@@ -497,24 +539,24 @@ size_t get_memory_address_arg(lua_State *L, const size_t BYTES_TO_READ, const un
     return address;
 }
 
+
 uint8_t* get_memory_ptr(lua_State *L, const unsigned int domain) {
-    uint8_t *data = (uint8_t *) runloop_state_get_ptr()->current_core.retro_get_memory_data(domain);  // core-provided pointer
-        
+    uint8_t *data = NULL;
+
+    // try with retro_get_memory_data
+    data = (uint8_t *) runloop_state_get_ptr()->current_core.retro_get_memory_data(domain);  // core-provided pointer
+    if(data) return data;
+    
+    // try using MEMORY_MAPS Memory Descriptors
+    struct retro_memory_descriptor* desc = find_memory_descriptor(domain);
+    if(desc)
+        return((uint8_t *)desc->ptr + desc->offset);
+    
     if(!data && domain == RETRO_MEMORY_ROM) {   
         // fallback to frontend buffer (read-only)
-        data = (uint8_t *) content_state_get_ptr()->content_list->entries[0].data;
+        return((uint8_t *) content_state_get_ptr()->content_list->entries[0].data);
     }
 
-    /* TODO: try retro_memory_map
-    // RC_MEMORY_TYPE_READONLY, "Cartridge ROM"
-      for (i = 0; i < console_regions->num_regions; ++i) {
-    const rc_memory_region_t* console_region = &console_regions->region[i];
-    const size_t console_region_size = console_region->end_address - console_region->start_address + 1;
-    const uint32_t type = rc_libretro_memory_console_region_to_ram_type(console_region->type);
-    uint32_t base_address = 0;
-    #endif
-    */
-    
     if (!data) luaL_error(L, "unable to access memory");
     return data;
 }
@@ -676,9 +718,7 @@ int memory_getmemorydomainlist(lua_State *L) {
     for (unsigned int i = 0; i < domain_count; i++)
     {
         unsigned int domain = domains_list_values[i];
-
-        //if( get_memory_ptr(L, domain) != NULL ) // throw errors
-        if( runloop_state_get_ptr()->current_core.retro_get_memory_data(domain) )
+        if( get_memory_size(domain) > 0 )
         {
             // current domain is supported for current core
             lua_pushinteger(L, table_index++);
@@ -695,7 +735,8 @@ int memory_getmemorydomainlist(lua_State *L) {
 // Returns the number of bytes of the specified memory domain. If no domain is specified, or the specified domain doesn't exist, returns the current domain size
 int memory_getmemorydomainsize(lua_State *L) {
    const unsigned int domain = get_memory_domain_arg(L, 1);
-   lua_pushinteger(L, (lua_Integer)check_memory_range(L, 1, 1, domain));  // lua_pushunsigned is deprecated
+   ssize_t r = get_memory_size(domain);
+   lua_pushinteger(L, (lua_Integer)r);
    return 1;
 }
 
@@ -1015,6 +1056,14 @@ void lua_draw_gfxs_loop() {
         
         gui_shape_t* curr_shape = &gui_shapes[i];
         
+        float x_pos = curr_shape->x;
+        float y_pos = curr_shape->y;
+        if(curr_shape->convert_coords)
+        {
+            x_pos = convert_to_screen_space(1+curr_shape->x, 0, 0, 0);
+            y_pos = convert_to_screen_space(0, 1+curr_shape->y, 0, 0);
+        }
+        
         switch (curr_shape->type)
         {
             case SHAPE_UNUSED:
@@ -1028,13 +1077,35 @@ void lua_draw_gfxs_loop() {
             {
                 if(string_is_empty(curr_shape->text)) // empty string
                     continue;
-                   
+                
+                if(curr_shape->font.font) {
+                    // add offset
+                    if(curr_shape->type==SHAPE_TEXT)
+                        y_pos += curr_shape->font.font->size;
+                    else
+                        y_pos += DEFAULT_FONT_SIZE;  //SHAPE_PIXELTEXT
+                }   
+
+                if(curr_shape->bg_color && curr_shape->bg_color != curr_shape->color) {
+                    // draw a shadow
+                    const int TEXT_SHADOW_OFFSET = convert_to_screen_space(1, 0, 0, 0);
+                    gfx_display_draw_text(
+                        curr_shape->font.font,
+                        curr_shape->text,
+                        x_pos + TEXT_SHADOW_OFFSET,
+                        y_pos + TEXT_SHADOW_OFFSET, 
+                        video_width, video_height,
+                        curr_shape->bg_color,
+                        TEXT_ALIGN_LEFT,
+                        1.0f, false, 0.0f, true);
+                }
+                
+                // draw foreground text
                 gfx_display_draw_text(
                     curr_shape->font.font,
                     curr_shape->text,
-                    curr_shape->convert_coords ? convert_to_screen_space(1+curr_shape->x, 0, 0, 0) : (curr_shape->x),
-                    (curr_shape->convert_coords ? convert_to_screen_space(0, 1+curr_shape->y, 0, 0) : (curr_shape->y)) 
-                        + (curr_shape->font.font ? curr_shape->font.font->size : DEFAULT_FONT_SIZE),
+                    x_pos,
+                    y_pos, 
                     video_width, video_height,
                     curr_shape->color,
                     TEXT_ALIGN_LEFT,
@@ -1044,9 +1115,8 @@ void lua_draw_gfxs_loop() {
                 gfx_widgets_draw_text(
                      &(curr_shape->font),
                      curr_shape->text,
-                     curr_shape->convert_coords ? convert_to_screen_space(1+curr_shape->x, 0, 0, 0) : (curr_shape->x),
-                     (curr_shape->convert_coords ? convert_to_screen_space(0, 1+curr_shape->y, 0, 0) : (curr_shape->y))
-                        + (curr_shape->font.font ? curr_shape->font.font->size : DEFAULT_FONT_SIZE),
+                     x_pos,
+                     y_pos,
                      video_width, video_height,
                      curr_shape->color,
                      TEXT_ALIGN_LEFT,
@@ -1077,8 +1147,8 @@ void lua_draw_gfxs_loop() {
                      p_disp,
                      userdata,
                      video_width, video_height,
-                     curr_shape->convert_coords ? convert_to_screen_space(1+curr_shape->x, 0, 0, 0) : (curr_shape->x),
-                     curr_shape->convert_coords ? convert_to_screen_space(0, 1+curr_shape->y, 0, 0) : (curr_shape->y),
+                     x_pos,
+                     y_pos, 
                      convert_to_screen_space(0, 0, 1+curr_shape->width, 0),
                      convert_to_screen_space(0, 0, 0, 1+curr_shape->height),
                      video_width, video_height,
@@ -1200,7 +1270,8 @@ int gui_drawPixelText_impl(lua_State *L, bool convert_coords) {
         free(curr_shape->font.font);  // free custom font
     }
     //curr_shape->font = dispwidget_get_ptr()->gfx_widget_fonts.regular;
-    curr_shape->font.font = NULL;  // TODO: force using bitmap font
+    curr_shape->font.font = NULL;
+    //curr_shape->font.font = bitmapfont_get_lut();  // TODO: force using bitmap font
     
     curr_shape->convert_coords = convert_coords;
     
@@ -1749,6 +1820,8 @@ void lua_init() {
     lua_setglobal(L, "input");
     luaL_newlib(L, memorylib);
     lua_setglobal(L, "memory");
+    luaL_newlib(L, memorylib);
+    lua_setglobal(L, "mainmemory");
     luaL_newlib(L, guilib);
     lua_setglobal(L, "gui");
     luaL_newlib(L, commlib);
