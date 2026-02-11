@@ -54,26 +54,159 @@
 
 // LUA API based on Bizhawk https://tasvideos.org/Bizhawk/LuaFunctions
 
+
+
+//#define LUA_SCRIPTS_SANDBOXED
+
+
+lua_State *co = NULL;
+
+
+
+typedef int (*print_fn)(const char *fmt, ...);
+
+static int print_luatable(lua_State *L, print_fn printer)
+{
+   luaL_checktype(L, 1, LUA_TTABLE);
+
+   lua_pushnil(L);  // first key
+
+   while (lua_next(L, 1) != 0)
+   {
+      const char *key_str = NULL;
+      char key_buf[64];
+   
+      // convert key
+      if (lua_type(L, -2) == LUA_TNUMBER)
+      {
+         snprintf(key_buf, sizeof(key_buf), "%g", lua_tonumber(L, -2) - 1);
+         key_str = key_buf;
+      }
+      else if (lua_type(L, -2) == LUA_TSTRING)
+      {
+         key_str = lua_tostring(L, -2);
+      }
+      else
+      {
+         // skip current entry
+         lua_pop(L, 1);
+         continue;
+      }
+
+      // switch on value type
+      int val_type = lua_type(L, -1);
+      switch (val_type)
+      {
+         case LUA_TSTRING:
+             printer("\"%s\": \"%s\"\n", key_str, lua_tostring(L, -1));
+             break;
+             
+         case LUA_TNUMBER:
+             printer("\"%s\": %g\n", key_str, lua_tonumber(L, -1));
+             break;
+
+         case LUA_TBOOLEAN:
+             printer("\"%s\": \"%s\"\n", key_str, lua_toboolean(L, -1) ? "True" : "False");
+             break;
+
+         case LUA_TNIL:
+             printer("\"%s\": nil\n", key_str);
+             break;
+
+         default:
+             printer("\"%s\": <%s>\n", key_str, lua_typename(L, val_type));
+             break;
+      }
+     
+      lua_pop(L, 1);  // next entry
+   }
+   return 0;
+}
+
+
 // console.log()
 // Outputs to the Retroarch debug console
-// TODO: accept a LuaTable
 int console_log(lua_State *L)
+{  
+   if (lua_type(L, 1) == LUA_TSTRING)
+   {
+      // simple string passed
+      char *msg = lua_tostring(L,1);
+      RARCH_LOG("[Lua] %s\n", msg);
+      return 0;
+   }
+   else if (lua_type(L, 1) == LUA_TTABLE)
+   {
+      return print_luatable(L, (print_fn)RARCH_LOG);
+   }
+   else
+      return luaL_error(L, "console.write expects string or table");
+
+   return 0;
+}
+
+
+// void console.writeline(object[] outputs)
+// Outputs the given object to the output box on the Lua Console dialog. Note: Can accept a LuaTable
+int console_writeline(lua_State *L)
 {
-   const char *msg = luaL_checkstring(L,1);
-   RARCH_LOG("[Lua] %s\n", msg);
+   if (lua_type(L, 1) == LUA_TSTRING)
+   {
+      // simple string passed
+      char *msg = lua_tostring(L, 1);
+      printf("%s\n", msg);
+   }
+   else if (lua_type(L, 1) == LUA_TTABLE)
+   {
+      print_luatable(L, (print_fn)printf);
+   }
+   else
+      return luaL_error(L, "console.write expects string or table");
+   
+   fflush(stdout);
    return 0;
 }
 
 // void console.write(object[] outputs)
 // Outputs the given object to the output box on the Lua Console dialog.
-// TODO: accept a LuaTable
 int console_write(lua_State *L)
 {
-   const char *msg = luaL_checkstring(L,1);
-   printf("%s", msg);
-   fflush(stdout);
+   if (lua_type(L, 1) == LUA_TSTRING)
+   {
+      // simple string passed
+      char *msg = lua_tostring(L, 1);
+      printf("%s", msg);
+      fflush(stdout);
+      return 0;
+   }
+   else
+      return console_writeline(L);  // handle tables and other types
+}
+
+
+/*
+#include "database_info.h"
+
+database_info_t get_database_entry(char* content_name)
+{
+#ifdef HAVE_LIBRETRODB
+   unsigned i;
+   const char *query             = string_is_empty(info->path_c) ? NULL : info->path_c;
+   database_info_list_t *db_list = database_info_list_new(info->path, query);
+
+   if (db_list)
+   {
+      for (i = 0; i < db_list->count; i++)
+         if (!string_is_empty(db_list->list[i].name) && ...)
+            return db_list->list[i]
+   }
+
+   database_info_list_free(db_list);
+   free(db_list);
+#endif
    return 0;
 }
+*/
 
 
 // gameinfo.getromhash()
@@ -84,6 +217,17 @@ int gameinfo_getromhash(lua_State *L)
 {
    char reply[40] = {0};
    snprintf(reply, sizeof(reply), "%X", content_get_crc());
+   
+#ifdef HAVE_LIBRETRODB
+   // TODO: try to obtain sha1/md5 hash from database_info_t
+   /*
+   database_info_t e = get_database_entry(content_name)
+   if (!string_is_empty(e.sha1))
+      snprintf(reply, sizeof(reply), "%s", e.sha1);
+   */
+#endif
+   //   or: rehash content_state_get_ptr()->content_list->entries[0].data  (not available for CD-based content)
+   
    lua_pushstring(L, reply);
    return 1;
 }
@@ -525,14 +669,8 @@ int client_getconfig(lua_State *L)
 // returns a lua table of the controller buttons pressed. If supplied, it will only return a table of buttons for the given controller
 int joypad_get(lua_State *L)
 {
-   // TODO: handle "controller" arg
+   unsigned port = luaL_optinteger(L, 1, 0);  // default to P1
    
-   input_driver_state_t *input_st   = input_state_get_ptr();
-   settings_t *settings = config_get_ptr();
-   input_bits_t current_bits;
-   BIT256_CLEAR_ALL_PTR(&current_bits);
-   input_driver_collect_system_input(input_st, settings, &current_bits);
-
    static const char* button_names[] = {
       "A", "B", "Select", "Start", "Up", "Down", "Left", "Right",
       "L", "R", "X", "Y", "L2", "R2", "L3", "R3"
@@ -558,9 +696,26 @@ int joypad_get(lua_State *L)
 
    lua_newtable(L);
    
-   for (unsigned i = 0; i < 16 ; i++)
+   //unsigned device = RETRO_DEVICE_JOYPAD;
+   
+   input_driver_state_t *input_st   = input_state_get_ptr(); 
+   
+   for (unsigned i = 0; i < RETRO_DEVICE_ID_JOYPAD_R3 ; i++)
    {
-      bool pressed = BIT256_GET(current_bits, button_codes[i]);
+      int16_t state = input_st->current_driver->input_state(
+          input_st->current_data,           // data
+          input_st->primary_joypad,         // joypad_data
+          input_st->secondary_joypad,       // sec_joypad_data
+          NULL,                             // joypad_info (NULL defaults to internal)
+          input_st->libretro_input_binds[port], // retro_keybinds
+          false,                            // keyboard_mapping_blocked
+          port, 
+          RETRO_DEVICE_JOYPAD, 
+          0, 
+          i
+      );
+
+      bool pressed = (state != 0);
 
       char key[16];
       snprintf(key, sizeof(key), "P1 %s", button_names[i]);
@@ -587,10 +742,10 @@ int input_get(lua_State *L)
    // Keyboard scan
    for (unsigned key = 0; key < RETROK_LAST; key++)
    {
-     input_keymaps_translate_rk_to_str(key, curr_keyname, 64);
-     string_to_upper(curr_keyname);
+      input_keymaps_translate_rk_to_str(key, curr_keyname, 64);
+      string_to_upper(curr_keyname);
   
-    bool curr_pressed = current_input->input_state(
+      bool curr_pressed = current_input->input_state(
            input_st->current_data,
            0,
            0,
@@ -600,12 +755,12 @@ int input_get(lua_State *L)
            0,
            RETRO_DEVICE_KEYBOARD, 0, key);
            
-     if (*curr_keyname && curr_pressed )
-     {
-        // key is pressed
-       lua_pushboolean(L, 1);  // true
-       lua_setfield(L, -2, curr_keyname);
-     }
+      if (*curr_keyname && curr_pressed )
+      {
+         // key is pressed
+         lua_pushboolean(L, 1);  // true
+         lua_setfield(L, -2, curr_keyname);
+      }
    }
    return 1;
 }
@@ -677,6 +832,8 @@ size_t get_memory_size(const unsigned int domain)
    {
       // fallback to frontend buffer (read-only)
       memsize = content_state_get_ptr()->content_list->entries[0].data_size;   
+      if(memsize>0)
+         RARCH_WARN("ROM domain not supported by the core, using frontend buffer instead (read-only)\n");
    }
    
    return memsize;
@@ -732,7 +889,17 @@ uint8_t* get_memory_ptr(lua_State *L, const unsigned int domain)
       if (data) return data;
    }
 
-   if (!data) luaL_error(L, "unable to access memory");
+   if (!data)
+   {
+      data = (uint8_t *) runloop_state_get_ptr()->current_core.retro_get_memory_data(RETRO_MEMORY_SYSTEM_RAM);  // core-provided pointer
+      if (data)
+      {
+         RARCH_ERR("Unable to access memory domain, falling back to default\n");
+         return data;
+      }
+      // else abort
+      luaL_error(L, "Unable to access memory domain");
+   }
    return data;
 }
 
@@ -755,7 +922,8 @@ unsigned int get_memory_domain_arg(lua_State *L, const int DOMAIN_ARG_POS)
          else if (strcasecmp(domain_str, "RTC")==0)
             domain = RETRO_MEMORY_RTC;
          else
-            return luaL_error(L, "unsupported memory domain");
+            RARCH_ERR("Invalid domain name: %s, falling back to default\n", domain_str);
+            //return luaL_error(L, "unsupported memory domain");
    }
    if (domain == RETRO_MEMORY_VIDEO_RAM && using_hw_framebuffer())
       return luaL_error(L, "cannot access hardware framebuffer");
@@ -1287,7 +1455,7 @@ void lua_draw_gfxs_loop()
             if (curr_shape->bg_color && curr_shape->bg_color != curr_shape->color)
             {
                // draw a shadow
-               const int TEXT_SHADOW_OFFSET = convert_to_screen_space(1, 0, 0, 0);
+               const int TEXT_SHADOW_OFFSET = 1;  // convert_to_screen_space(1, 0, 0, 0);
                gfx_display_draw_text(
                   curr_shape->font.font,
                   curr_shape->text,
@@ -1354,7 +1522,43 @@ void lua_draw_gfxs_loop()
                 video_width, video_height,
                 curr_quad_bg_color,
                 NULL);
-                
+            
+            /* draws directly into the framebuffer
+            {
+               video_driver_state_t *video_st = video_state_get_ptr();
+               const void *frame = (const void*)video_st->frame_cache_data;
+               unsigned width  = video_st->frame_cache_width;
+               unsigned height = video_st->frame_cache_height;
+               size_t pitch   = video_st->frame_cache_pitch;
+               
+               //frame = video_driver_read_frame_raw(&width, &height, &pitch);
+               
+               // Bounds-check
+               if (!frame || x_pos >= width || y_pos >= height)
+                  continue;
+
+               // Locate the pixel (assumes 32bpp XRGB8888)
+               uint32_t *pixels = (uint32_t*)frame;
+               unsigned pitch_pixels = pitch / sizeof(uint32_t);
+               //uint32_t pixel = pixels[y_pos * pitch_pixels + x_pos];
+
+               // Extract RGB (R = high byte, B = low byte)
+               //uint8_t r = (pixel >> 16) & 0xFF;
+               //uint8_t g = (pixel >>  8) & 0xFF;
+               //uint8_t b = (pixel     ) & 0xFF;
+               
+               for(int i = 0; i < curr_shape->width; i++)
+                  for(int j = 0; j < curr_shape->height; j++)
+                  {
+                     int y = (int)curr_shape->y + j;
+                     int x = (int)curr_shape->x + i;
+                     //RARCH_LOG("%d %d %x \n", x, y, pixels[y * pitch_pixels + x]);
+                     pixels[y * pitch_pixels + x] = (curr_shape->bg_color); // TODO: needs shiftin
+                  }
+               
+               //video_driver_cached_frame();  // forced frame update
+            }*/
+            
             break;
          }
       }
@@ -1591,7 +1795,8 @@ int gui_drawString_impl(lua_State *L, bool convert_coords)
       }
 
       curr_shape->font.font = gfx_display_font_file(disp_get_ptr(), fontpath, font_size, video_driver_is_threaded());
-      if (curr_shape->font.font == NULL) RARCH_ERR("cannot load font: %s\n", font_face);
+      if (curr_shape->font.font == NULL)
+         RARCH_ERR("cannot load font: %s\n", font_face);
       // TODO: need to init other fields?
    }
    
@@ -1708,23 +1913,21 @@ int gui_drawPixel(lua_State *L)
 #endif
 
 
-#ifdef LUA_SCRIPTS_SANDBOXED
-void check_safe_url(lua_State *L, url)
-{
-   if (!string_starts_with("http://localhost") && !string_starts_with("https://localhost"))
-      return luaL_error(L, "cannot send HTTP request to remote domain due to sandboxing enabled");
-}
-#endif
 
+void check_safe_url(lua_State *L, char* url)
+{
+#ifdef LUA_SCRIPTS_SANDBOXED
+   if (!string_starts_with(url, "http://localhost") && !string_starts_with(url, "https://localhost"))
+      luaL_error(L, "cannot send HTTP request to remote domain due to sandboxing enabled");
+#endif
+}
 
 // string comm.httpGet(string url)
 // makes a HTTP GET request
 int comm_httpget(lua_State *L)
 {
-   const char *url = luaL_checkstring(L,1);
-#ifdef LUA_SCRIPTS_SANDBOXED 
+   const char *url = luaL_checkstring(L,1); 
    check_safe_url(L, url);
-#endif
    // TODO: allow passing headers: task_push_http_transfer_with_headers(...)
    void* t = task_push_http_transfer(url, true, "GET", NULL, NULL);
    if (!t) return luaL_error(L, "cannot send HTTP request");
@@ -1738,9 +1941,7 @@ int comm_httpget(lua_State *L)
 int comm_httppost(lua_State *L)
 {
    const char *url = luaL_checkstring(L,1);
-#ifdef LUA_SCRIPTS_SANDBOXED 
    check_safe_url(L, url);
-#endif
    const char *payload = luaL_checkstring(L,2);
    void* t = task_push_http_post_transfer(url, payload, true, "POST", NULL, NULL);
    if (!t) return luaL_error(L, "cannot send HTTP request");
@@ -1753,9 +1954,7 @@ int comm_httppost(lua_State *L)
 int comm_httpput(lua_State *L)
 {
    const char *url = luaL_checkstring(L,1);
-#ifdef LUA_SCRIPTS_SANDBOXED 
    check_safe_url(L, url);
-#endif
    const char *payload = luaL_checkstring(L,2);
    void* t = task_push_http_post_transfer(url, payload, true, "PUT", NULL, NULL);
    if (!t) return luaL_error(L, "cannot send HTTP request");
@@ -1766,7 +1965,7 @@ int comm_httpput(lua_State *L)
 
 static const struct luaL_Reg  consolelib[] = {
    { "log" , console_log },
-   { "writeline" , console_log },
+   { "writeline" , console_writeline },
    { "write" , console_write },
    {NULL,NULL}
 };
@@ -1831,7 +2030,7 @@ static const struct luaL_Reg  guilib[] = {
    // FCEUX-aliases
    { "text", gui_drawString },
    { "drawtext", gui_drawString },
-   { "setpixel", gui_drawPixel },
+   //WIP: { "setpixel", gui_drawPixel },
 #endif
    { "getpixel", emu_getscreenpixel },
    //TODO: gui.parsecolor(color)
@@ -1890,6 +2089,9 @@ static const struct luaL_Reg  memorylib [] = {
    { "readwordsigned" ,  memory_read_s16_le },
    { "readword" ,  memory_read_u16_le },
    //TODO: { "readfloat" ,  memory_readfloat },
+   // new functions:
+   // TODO: memory.dump(filename, domain) // dump the whole buffer into a file
+   // TODO: memory.search(pattern, start_address, domain) // search for a byte pattern, returns the address of the first match.
    {NULL,NULL}
 };
 
@@ -1944,18 +2146,25 @@ int safe_io_open(lua_State *L)
    const char *user_path = luaL_checkstring(L, 1);
    const char *mode = luaL_optstring(L, 2, "r");
 
+   // Block write-capable modes
+   if (strchr(mode, 'w') || strchr(mode, 'a') || strchr(mode, '+'))
+      return luaL_error(L,"Access denied: write modes are disabled in sandbox.");
+   
    if (path_is_absolute(user_path))
    {
-      // TODO: check if basename matches current content
-      return luaL_error(L, "Access denied: file path is absolute, must be relative. Disable sandboxing to bypass.");
+      // check if parent dir matches current content
+      char content_parent_dir[PATH_MAX_LENGTH] = {0};
+      snprintf(content_parent_dir, PATH_MAX_LENGTH, "%s", path_get(RARCH_PATH_BASENAME));
+      path_basedir(content_parent_dir);
+      if (!string_starts_with(user_path, content_parent_dir))
+         return luaL_error(L, "Access denied: file path is does not match current content. Disable sandboxing to bypass.");
+      // TODO: also allow subdirs of
+      //const char* retroarch_system_dir = path_get(RARCH_PATH_CONFIG);  // /system
    }
-   if (string_starts_with(user_path, ".."))
-   {
-      return luaL_error(L, "Access denied: file path cannot access parent. Disable sandboxing to bypass.");
-   }
-   // TODO: allow subdirs of
-   //const char* retroarch_system_dir = path_get(RARCH_PATH_CONFIG);  // /system
    
+   if (string_starts_with(user_path, ".."))
+      return luaL_error(L, "Access denied: file path cannot access parent. Disable sandboxing to bypass.");
+
    // Retrieve original io.open from registry
    lua_getfield(L, LUA_REGISTRYINDEX, "original_io_open");
    if (!lua_isfunction(L, -1))
@@ -1971,34 +2180,26 @@ int safe_io_open(lua_State *L)
    return 1;
 }
 
-
-lua_State *co = NULL;
       
 void lua_init()
 {
    // build current script name
-   char *lua_file = strdup(path_get(RARCH_PATH_BASENAME));
-   if (!lua_file) return;
-   lua_file = realloc(lua_file, strlen(lua_file) + strlen(".lua") + 1);
-   if (!lua_file) return;
-   strcat(lua_file, ".lua");
+   char lua_file[PATH_MAX_LENGTH] = {0};
+   snprintf(lua_file, PATH_MAX_LENGTH, "%s.lua", path_get(RARCH_PATH_BASENAME));
    
    if (!path_is_valid(lua_file))
    {
       RARCH_LOG("[Lua] %s not found\n", lua_file);
-      free(lua_file);
-      // try a global alternative
-      settings_t *settings         = config_get_ptr();
-      lua_file = strdup(settings->paths.directory_system);
-      if (!lua_file) return;
-      lua_file = realloc(lua_file, strlen(lua_file) + strlen("/autostart.lua") + 1);
-      if (!lua_file) return;
-      strcat(lua_file, "/autostart.lua");
+      // try a global alternative 
+      lua_file[0] = 0;  // truncate
+      settings_t *settings  = config_get_ptr();
+      fill_pathname_join_special(lua_file, settings->paths.directory_system, "global.lua", sizeof(lua_file));
       
       if (!path_is_valid(lua_file))
       {
+         // TODO: add core default, content dir default?
+         
          RARCH_LOG("[Lua] %s not found\n", lua_file);
-         free(lua_file);
          return;
       }
    }
@@ -2029,7 +2230,20 @@ void lua_init()
    lua_getglobal(L, "os");
    if (lua_istable(L, -1))
    {
+      // os.execute = nil
       lua_pushstring(L, "execute");
+      lua_pushnil(L);
+      lua_settable(L, -3);
+      
+      // os.remove = nil
+      // TODO: only restrict filename path
+      lua_pushstring(L, "remove");
+      lua_pushnil(L);
+      lua_settable(L, -3);
+
+      // os.rename = nil
+      // TODO: only restrict filename path
+      lua_pushstring(L, "rename");
       lua_pushnil(L);
       lua_settable(L, -3);
    }
@@ -2079,8 +2293,6 @@ void lua_init()
 
    // Store the script in the coroutine
    luaL_loadfile(co, lua_file);
-
-   free(lua_file);
 }
 
 
@@ -2122,7 +2334,7 @@ void lua_loop()
 
 void lua_deinit()
 {
-   if (!co) return;  // init failed (no script file found)
+   if (!co) return;  // init failed or no script file found
    
    // clear all gfx shapes
    gui_clearGraphics(NULL);
