@@ -61,6 +61,9 @@
 
 lua_State *co = NULL;
 
+static unsigned int current_memory_domain = RETRO_MEMORY_SYSTEM_RAM;
+const char* memory_domains_list_names[] = { "Battery RAM", "RTC", "RAM", "VRAM", "ROM" };
+
 
 
 typedef int (*print_fn)(const char *fmt, ...);
@@ -696,23 +699,21 @@ int joypad_get(lua_State *L)
 
    lua_newtable(L);
    
-   //unsigned device = RETRO_DEVICE_JOYPAD;
-   
    input_driver_state_t *input_st   = input_state_get_ptr(); 
    
    for (unsigned i = 0; i < RETRO_DEVICE_ID_JOYPAD_R3 ; i++)
    {
       int16_t state = input_st->current_driver->input_state(
-          input_st->current_data,           // data
-          input_st->primary_joypad,         // joypad_data
-          input_st->secondary_joypad,       // sec_joypad_data
-          NULL,                             // joypad_info (NULL defaults to internal)
-          input_st->libretro_input_binds[port], // retro_keybinds
-          false,                            // keyboard_mapping_blocked
-          port, 
-          RETRO_DEVICE_JOYPAD, 
-          0, 
-          i
+         input_st->current_data,           // data
+         input_st->primary_joypad,         // joypad_data
+         input_st->secondary_joypad,       // sec_joypad_data
+         NULL,                             // joypad_info (NULL defaults to internal)
+         input_st->libretro_input_binds[port], // retro_keybinds
+         false,                            // keyboard_mapping_blocked
+         port, 
+         RETRO_DEVICE_JOYPAD, 
+         0, 
+         i
       );
 
       bool pressed = (state != 0);
@@ -727,15 +728,16 @@ int joypad_get(lua_State *L)
    return 1;
 }
 
+
 // nluatable input.get()
 // Returns a dict-like table of key/button names (of host). Only pressed buttons will appear (with a value of true); unpressed buttons are omitted. I
 int input_get(lua_State *L)
 {
    lua_newtable(L);
 
-   input_driver_state_t *input_st   = input_state_get_ptr();
+   input_driver_state_t *input_st = input_state_get_ptr();
    settings_t *settings = config_get_ptr();
-   input_driver_t *current_input         = input_st->current_driver;
+   input_driver_t *current_input = input_st->current_driver;
    
    char curr_keyname[64] = {0};
 
@@ -746,14 +748,14 @@ int input_get(lua_State *L)
       string_to_upper(curr_keyname);
   
       bool curr_pressed = current_input->input_state(
-           input_st->current_data,
-           0,
-           0,
-           0,
-           0,
-           0,
-           0,
-           RETRO_DEVICE_KEYBOARD, 0, key);
+            input_st->current_data,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            RETRO_DEVICE_KEYBOARD, 0, key);
            
       if (*curr_keyname && curr_pressed )
       {
@@ -764,6 +766,208 @@ int input_get(lua_State *L)
    }
    return 1;
 }
+
+
+// nluatable input.get_pressed_axes(bool? mouse_relative)
+// Returns a dict-like table of (host) axis names and their state. Axes may not appear if they have never been seen with a value other than 0 (for example, if the gamepad has been set down on a table since launch, or if it was recently reconnected).
+// Includes mouse cursor position axes, but not mouse wheel rotation. Unlike getmouse, these have the names "WMouse X" and "WMouse Y".
+// TODO: option to get relative mouse movements
+int input_get_pressed_axes(lua_State *L)
+{
+   input_driver_state_t *input_st = input_state_get_ptr();
+   if (!input_st || !input_st->current_driver || !input_st->current_driver->input_state)
+      return 0;
+     
+   lua_newtable(L);
+
+   // Joypad Analog Sticks (Same as before - these are inherently relative to center)
+   const char* stick_labels[] = { "LStick X", "LStick Y", "RStick X", "RStick Y" };
+   unsigned stick_indices[]  = { 
+      RETRO_DEVICE_INDEX_ANALOG_LEFT,  RETRO_DEVICE_INDEX_ANALOG_LEFT, 
+      RETRO_DEVICE_INDEX_ANALOG_RIGHT, RETRO_DEVICE_INDEX_ANALOG_RIGHT 
+   };
+   unsigned stick_ids[]      = { 
+      RETRO_DEVICE_ID_ANALOG_X, RETRO_DEVICE_ID_ANALOG_Y, 
+      RETRO_DEVICE_ID_ANALOG_X, RETRO_DEVICE_ID_ANALOG_Y 
+   };
+
+   for (unsigned port = 0; port < 2; port++)
+   {
+      for (int i = 0; i < 4; i++)
+      {
+         int16_t val = input_st->current_driver->input_state(
+            input_st->current_data,
+            input_st->primary_joypad,
+            input_st->secondary_joypad,
+            NULL,
+            input_st->libretro_input_binds[port],
+            false,
+            port,
+            RETRO_DEVICE_ANALOG,
+            stick_indices[i],
+            stick_ids[i]
+            );
+
+         // Only add to table if moved (non-zero)
+         if (val != 0)
+         {
+            char key[32];
+            snprintf(key, sizeof(key), "P%u %s", port + 1, stick_labels[i]);
+            lua_pushstring(L, key);
+            lua_pushinteger(L, (int)val);
+            lua_settable(L, -3);
+         }
+      }
+   }
+
+   // Mouse
+   // RETRO_DEVICE_POINTER returns absolute coordinates [-32768, 32767]
+   const char* pointer_labels[] = { "WMouse X", "WMouse Y" };
+
+   //TODO: bool relative = (bool)lua_toboolean(L, 1);
+   bool relative = false;
+
+   for (int i = 0; i < 2; i++)
+   {
+      // Select the correct ID based on the mode
+      unsigned axis_id;
+      if (relative)
+         axis_id = (i == 0) ? RETRO_DEVICE_ID_MOUSE_X : RETRO_DEVICE_ID_MOUSE_Y;
+      else
+         axis_id = (i == 0) ? RETRO_DEVICE_ID_POINTER_X : RETRO_DEVICE_ID_POINTER_Y;
+
+      int16_t val = input_st->current_driver->input_state(
+         input_st->current_data,
+         input_st->primary_joypad,
+         input_st->secondary_joypad,
+         NULL,
+         input_st->libretro_input_binds[0],  // Mouse usually associated with P1 binds
+         false, 0, 
+         (relative ? RETRO_DEVICE_MOUSE : RETRO_DEVICE_POINTER), 
+         0, 
+         axis_id
+      );
+
+      if (relative)
+      {
+         // For relative movement (deltas), only add if it actually moved
+         if (val != 0)
+         {
+             lua_pushstring(L, pointer_labels[i]);
+             lua_pushinteger(L, (int)val);
+             lua_settable(L, -3);
+         }
+      }
+      else
+      {
+         // For absolute coordinates, always include the position (center is 0)
+         lua_pushstring(L, pointer_labels[i]);
+         lua_pushinteger(L, (int)val);
+         lua_settable(L, -3);
+      }
+   }
+
+   return 1;
+}
+
+
+// nluatable input.getmouse()
+// Returns a lua table of the mouse X/Y coordinates and button states. Table keys are X, Y, Left, Middle, Right, XButton1, XButton2, Wheel.
+int input_getmouse(lua_State *L)
+{
+    input_driver_state_t *input_st = input_state_get_ptr();
+    if (!input_st || !input_st->current_driver || !input_st->current_driver->input_state)
+        return 0;
+
+    struct video_viewport vp;
+    if (!video_driver_get_viewport_info(&vp))
+        return 0;
+        
+    lua_newtable(L);
+
+    // Absolute Coordinates (X, Y)
+    // Using RETRO_DEVICE_POINTER for absolute screen position [-32768, 32767]
+    int16_t raw_x = input_st->current_driver->input_state(
+        input_st->current_data, input_st->primary_joypad, input_st->secondary_joypad,
+        NULL, input_st->libretro_input_binds[0], false, 0, 
+        RETRO_DEVICE_POINTER, 0, RETRO_DEVICE_ID_POINTER_X);
+
+    int16_t raw_y = input_st->current_driver->input_state(
+        input_st->current_data, input_st->primary_joypad, input_st->secondary_joypad,
+        NULL, input_st->libretro_input_binds[0], false, 0, 
+        RETRO_DEVICE_POINTER, 0, RETRO_DEVICE_ID_POINTER_Y);
+
+    /* Convert from RetroArch "Normalized" space to FB Pixels.
+       The formula is: 
+       ((raw_coord + 32768) / 65535) * viewport_dimension
+    */
+    float norm_x = (float)(raw_x + 32768) / 65535.0f;
+    float norm_y = (float)(raw_y + 32768) / 65535.0f;
+    int fb_x = (int)(norm_x * vp.full_width);
+    int fb_y = (int)(norm_y * vp.full_height);
+    
+    lua_pushstring(L, "X");     lua_pushinteger(L, fb_x); lua_settable(L, -3);
+    lua_pushstring(L, "Y");     lua_pushinteger(L, fb_y); lua_settable(L, -3);
+
+    // Buttons
+    const char* btn_names[] = { "Left", "Right", "Middle", "XButton1", "XButton2" };
+    unsigned btn_ids[] = { 
+        RETRO_DEVICE_ID_MOUSE_LEFT, 
+        RETRO_DEVICE_ID_MOUSE_RIGHT, 
+        RETRO_DEVICE_ID_MOUSE_MIDDLE,
+        RETRO_DEVICE_ID_MOUSE_BUTTON_4, 
+        RETRO_DEVICE_ID_MOUSE_BUTTON_5 
+    };
+
+    for (int i = 0; i < 5; i++)
+    {
+        int16_t btn_state = input_st->current_driver->input_state(
+            input_st->current_data,
+            input_st->primary_joypad,
+            input_st->secondary_joypad,
+            NULL,
+            input_st->libretro_input_binds[0],
+            false,
+            0, 
+            RETRO_DEVICE_MOUSE,
+            0,
+            btn_ids[i]);
+
+        lua_pushstring(L, btn_names[i]);
+        lua_pushboolean(L, btn_state != 0);
+        lua_settable(L, -3);
+    }
+
+   /*
+    // Wheel Delta
+    int16_t wheel = input_st->current_driver->input_state(
+        input_st->current_data, input_st->primary_joypad, input_st->secondary_joypad,
+        NULL, input_st->libretro_input_binds[0], false, 0, 
+        RETRO_DEVICE_MOUSE, 0, RETRO_DEVICE_ID_MOUSE_WHEEL);
+
+    lua_pushstring(L, "Wheel");
+    lua_pushinteger(L, wheel);
+    lua_settable(L, -3);
+    */
+   // We check UP and DOWN and combine them into a single integer.
+   // TODO: bizhawk has an higher resolution
+   int16_t up = input_st->current_driver->input_state(
+         input_st->current_data, input_st->primary_joypad, input_st->secondary_joypad,
+         NULL, input_st->libretro_input_binds[0], false, 0, 
+         RETRO_DEVICE_MOUSE, 0, RETRO_DEVICE_ID_MOUSE_WHEELUP);
+   
+   int16_t down = input_st->current_driver->input_state(
+         input_st->current_data, input_st->primary_joypad, input_st->secondary_joypad,
+         NULL, input_st->libretro_input_binds[0], false, 0, 
+         RETRO_DEVICE_MOUSE, 0, RETRO_DEVICE_ID_MOUSE_WHEELDOWN);
+    
+    lua_pushstring(L, "Wheel");
+    lua_pushinteger(L, (int)(up - down)); // Up is positive, Down is negative
+    lua_settable(L, -3);
+
+    return 1;
+}
+
 
 
 bool using_hw_framebuffer()
@@ -836,6 +1040,14 @@ size_t get_memory_size(const unsigned int domain)
          RARCH_WARN("ROM domain not supported by the core, using frontend buffer instead (read-only)\n");
    }
    
+   if (memsize == 0)
+   {
+      // fallback to current domain
+      memsize = runloop_state_get_ptr()->current_core.retro_get_memory_size(current_memory_domain);
+      if (memsize)
+         RARCH_ERR("Unable to find domain, falling back to current\n");
+   }
+   
    return memsize;
 }
 
@@ -845,6 +1057,7 @@ void check_memory_range(lua_State *L, const size_t start_address, const size_t l
    if ((start_address + len - 1) > memsize)
    {
       //RARCH_ERR("address out of bounds: %d\n", domain );
+      //return -1;
       luaL_error(L, "memory address out of bounds");
    }
 }
@@ -874,7 +1087,7 @@ uint8_t* get_memory_ptr(lua_State *L, const unsigned int domain)
    uint8_t *data = NULL;
 
    // try with retro_get_memory_data
-   data = (uint8_t *) runloop_state_get_ptr()->current_core.retro_get_memory_data(domain);  // core-provided pointer
+   data = (uint8_t *) runloop_state_get_ptr()->current_core.retro_get_memory_data(domain);
    if (data) return data;
    
    // try using MEMORY_MAPS Memory Descriptors
@@ -891,10 +1104,11 @@ uint8_t* get_memory_ptr(lua_State *L, const unsigned int domain)
 
    if (!data)
    {
-      data = (uint8_t *) runloop_state_get_ptr()->current_core.retro_get_memory_data(RETRO_MEMORY_SYSTEM_RAM);  // core-provided pointer
+      // fallback to current domain
+      data = (uint8_t *) runloop_state_get_ptr()->current_core.retro_get_memory_data(current_memory_domain);
       if (data)
       {
-         RARCH_ERR("Unable to access memory domain, falling back to default\n");
+         RARCH_ERR("Unable to find domain, falling back to current\n");
          return data;
       }
       // else abort
@@ -1057,24 +1271,57 @@ int memory_readbyterange(lua_State *L)
 }
 
 
+// bool memory.usememorydomain(string domain)
+// Attempts to set the current memory domain to the given domain. If the name does not match a valid memory domain, the function returns false, else it returns true
+int memory_usememorydomain(lua_State *L)
+{
+   const unsigned int domain = get_memory_domain_arg(L, 1);
+   ssize_t memsize = runloop_state_get_ptr()->current_core.retro_get_memory_size(domain);
+   if (find_memory_descriptor(domain) || memsize > 0) {
+      current_memory_domain = domain;
+      lua_pushboolean(L, true);
+   }
+   else
+   {
+      lua_pushboolean(L, false);
+   }
+   return 1;
+}
+
+// string memory.getcurrentmemorydomain()
+// Returns a string name of the current memory domain selected by Lua. The default is Main memory
+int memory_getcurrentmemorydomain(lua_State *L)
+{
+   lua_pushstring(L, memory_domains_list_names[current_memory_domain]);
+   return 1;
+}
+
+// uint memory.getcurrentmemorydomainsize()
+// Returns the number of bytes of the current memory domain selected by Lua. The default is Main memory
+int memory_getcurrentmemorydomainsize(lua_State *L)
+{
+   lua_pushinteger(L, (lua_Integer)get_memory_size(current_memory_domain));
+   return 1;
+}
+
+
 // nluatable memory.getmemorydomainlist()
 // Returns a string of the memory domains for the loaded platform core. List will be a single string delimited by line feeds
 int memory_getmemorydomainlist(lua_State *L)
 {
    const unsigned int domains_list_values[] = { RETRO_MEMORY_SAVE_RAM, RETRO_MEMORY_RTC, RETRO_MEMORY_SYSTEM_RAM, RETRO_MEMORY_VIDEO_RAM, RETRO_MEMORY_ROM  };
-   const char* domains_list_names[] = { "Battery RAM", "RTC", "RAM", "VRAM", "ROM" };
    const unsigned domain_count = sizeof(domains_list_values) / sizeof(domains_list_values[0]);
    lua_newtable(L);  // return table
-   int table_index = 1;
+   int table_index = 1;  // starting from 1
 
    for (unsigned int i = 0; i < domain_count; i++)
    {
       unsigned int domain = domains_list_values[i];
-      if (get_memory_size(domain) > 0)
+      if (find_memory_descriptor(domain) || runloop_state_get_ptr()->current_core.retro_get_memory_size(domain) > 0)
       {
          // current domain is supported for current core
          lua_pushinteger(L, table_index++);
-         lua_pushstring(L, domains_list_names[i]);
+         lua_pushstring(L, memory_domains_list_names[i]);
          lua_settable(L, -3);
       }
    }
@@ -2073,8 +2320,9 @@ static const struct luaL_Reg  memorylib [] = {
    // TODO: read_u/s32_be(le
    { "readbyterange" ,  memory_readbyterange },
    { "read_bytes_as_array" ,  memory_readbyterange },
-   // TODO: memory.getcurrentmemorydomain
-   // TODO:memory.getcurrentmemorydomainsize
+   { "usememorydomain", memory_usememorydomain },
+   { "getcurrentmemorydomain", memory_getcurrentmemorydomain },
+   { "getcurrentmemorydomainsize", memory_getcurrentmemorydomainsize },
    { "getmemorydomainlist" ,  memory_getmemorydomainlist },
    { "getmemorydomainsize" ,  memory_getmemorydomainsize },
    { "hash_region" ,  memory_hash_region },
@@ -2105,6 +2353,8 @@ static const struct luaL_Reg  joypadlib [] = {
 static const struct luaL_Reg  inputlib [] = {
    { "get" ,  input_get },
    { "read" ,  input_get },
+   { "get_pressed_axes" ,  input_get_pressed_axes },
+   { "getmouse" ,  input_getmouse },
    {NULL,NULL}
 };
 
