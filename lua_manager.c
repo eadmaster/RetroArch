@@ -374,10 +374,9 @@ int bizstring_trim(lua_State *L)
    return 1;
 } 
 
-//#ifdef HAVE_ICONV
-#if defined(__has_include)
-#if __has_include(<iconv.h>)
-#define HAVE_ICONV
+#ifdef HAVE_ICONV
+//#if defined(__has_include)
+//#if __has_include(<iconv.h>)
    
 #include <iconv.h>
 //#include <errno.h>
@@ -492,7 +491,6 @@ int bizstring_decode(lua_State *L)
 
    return 1;
 }
-#endif
 #endif
 
 
@@ -1114,19 +1112,19 @@ uint8_t* get_memory_ptr(lua_State *L, const unsigned int domain)
       // else abort
       luaL_error(L, "Unable to access memory domain");
    }
+   
    return data;
 }
 
 
 unsigned int get_memory_domain_arg(lua_State *L, const int DOMAIN_ARG_POS)
 {
-   unsigned int domain = RETRO_MEMORY_SYSTEM_RAM;  // default
-   if (lua_gettop(L) >= DOMAIN_ARG_POS )  // 3 for write functions, 2 for read functions
+   unsigned int domain = current_memory_domain;
+   if (lua_gettop(L) >= DOMAIN_ARG_POS)  // 3 for write functions, 2 for read functions
    {
          const char *domain_str = luaL_checkstring(L, DOMAIN_ARG_POS);  // domain arg passed
          if (strcasecmp(domain_str, "RAM")==0 || strcasecmp(domain_str, "WRAM")==0 || strcasecmp(domain_str, "Main Memory")==0)
             domain = RETRO_MEMORY_SYSTEM_RAM;
-         //else if (strcasestr(domain_str, "VRAM") != NULL)   // also matches "VRAM1"
          else if (string_starts_with(domain_str, "VRAM"))   // also matches "VRAM1"
             domain = RETRO_MEMORY_VIDEO_RAM;
          else if (strcasecmp(domain_str, "ROM")==0 || strcasecmp(domain_str, "CARTROM")==0)
@@ -1136,7 +1134,7 @@ unsigned int get_memory_domain_arg(lua_State *L, const int DOMAIN_ARG_POS)
          else if (strcasecmp(domain_str, "RTC")==0)
             domain = RETRO_MEMORY_RTC;
          else
-            RARCH_ERR("Invalid domain name: %s, falling back to default\n", domain_str);
+            RARCH_ERR("Unable to find domain: %s, falling back to current\n", domain_str);
             //return luaL_error(L, "unsupported memory domain");
    }
    if (domain == RETRO_MEMORY_VIDEO_RAM && using_hw_framebuffer())
@@ -1275,10 +1273,10 @@ int memory_readbyterange(lua_State *L)
 // Attempts to set the current memory domain to the given domain. If the name does not match a valid memory domain, the function returns false, else it returns true
 int memory_usememorydomain(lua_State *L)
 {
-   const unsigned int domain = get_memory_domain_arg(L, 1);
+   const unsigned int domain = get_memory_domain_arg(L, 1);  // TODO: no fallback to current in this case -> "Unable to find domain"
    ssize_t memsize = runloop_state_get_ptr()->current_core.retro_get_memory_size(domain);
    if (find_memory_descriptor(domain) || memsize > 0) {
-      current_memory_domain = domain;
+      current_memory_domain = domain;  // set global var
       lua_pushboolean(L, true);
    }
    else
@@ -1292,7 +1290,7 @@ int memory_usememorydomain(lua_State *L)
 // Returns a string name of the current memory domain selected by Lua. The default is Main memory
 int memory_getcurrentmemorydomain(lua_State *L)
 {
-   lua_pushstring(L, memory_domains_list_names[current_memory_domain]);
+   lua_pushstring(L, memory_domains_list_names[current_memory_domain]); // read global var
    return 1;
 }
 
@@ -1300,7 +1298,7 @@ int memory_getcurrentmemorydomain(lua_State *L)
 // Returns the number of bytes of the current memory domain selected by Lua. The default is Main memory
 int memory_getcurrentmemorydomainsize(lua_State *L)
 {
-   lua_pushinteger(L, (lua_Integer)get_memory_size(current_memory_domain));
+   lua_pushinteger(L, (lua_Integer)get_memory_size(current_memory_domain)); // read global var
    return 1;
 }
 
@@ -1661,7 +1659,7 @@ void lua_draw_gfxs_loop()
       TEXT_ALIGN_LEFT,
       1.0f, false, 0.0f, true);
    
-   const float DEFAULT_FONT_SIZE = config_get_ptr()->floats.video_font_size;
+   const float CONFIG_FONT_SIZE = config_get_ptr()->floats.video_font_size;
    
    // Iterate over the shapes to draw
    for (int i=0; i<LUA_MAX_SHAPES_ONSCREEN; i++)
@@ -1696,7 +1694,7 @@ void lua_draw_gfxs_loop()
                if (curr_shape->type==SHAPE_TEXT)
                   y_pos += curr_shape->font.font->size;
                else
-                  y_pos += DEFAULT_FONT_SIZE;  //SHAPE_PIXELTEXT
+                  y_pos += CONFIG_FONT_SIZE;  //SHAPE_PIXELTEXT
             }   
 
             if (curr_shape->bg_color && curr_shape->bg_color != curr_shape->color)
@@ -1772,6 +1770,7 @@ void lua_draw_gfxs_loop()
             
             /* draws directly into the framebuffer
             {
+               if (using_hw_framebuffer()) continue;  // cannot write hardware framebuffer
                video_driver_state_t *video_st = video_state_get_ptr();
                const void *frame = (const void*)video_st->frame_cache_data;
                unsigned width  = video_st->frame_cache_width;
@@ -1905,10 +1904,7 @@ uint32_t read_color_arg(lua_State *L, const int ARG_NO, const uint32_t DEFAULT_C
 
 
 int gui_drawPixelText_impl(lua_State *L, bool convert_coords)
-{
-   if (using_hw_framebuffer()) 
-      return luaL_error(L, "cannot draw on hardware framebuffer");
-   
+{   
    gui_shape_t* curr_shape = &gui_shapes[gui_shapes_curr_index];
    
    curr_shape->type = SHAPE_PIXELTEXT;
@@ -1958,10 +1954,7 @@ int gui_drawPixelTextO(lua_State *L)
 
 
 int gui_drawString_impl(lua_State *L, bool convert_coords)
-{
-   if (using_hw_framebuffer()) 
-      return luaL_error(L, "cannot draw on hardware framebuffer");
-   
+{  
    gui_shape_t* curr_shape = &gui_shapes[gui_shapes_curr_index];
    
    curr_shape->type = SHAPE_TEXT;
@@ -1985,13 +1978,13 @@ int gui_drawString_impl(lua_State *L, bool convert_coords)
 
    // apply font and scaling
    settings_t *settings         = config_get_ptr();
-   //const float DEFAULT_FONT_SIZE = 32.0f;  // BASE_FONT_SIZE as defined in gfx_widgets.c
-   const float DEFAULT_FONT_SIZE = settings->floats.video_font_size;
-   //RARCH_LOG("DEFAULT_FONT_SIZE: %f\n", DEFAULT_FONT_SIZE);
+   //const float CONFIG_FONT_SIZE = 32.0f;  // BASE_FONT_SIZE as defined in gfx_widgets.c
+   const float CONFIG_FONT_SIZE = settings->floats.video_font_size;
+   //RARCH_LOG("CONFIG_FONT_SIZE: %f\n", CONFIG_FONT_SIZE);
    const char* DEFAULT_FONT_FACE = settings->paths.path_font;  // defaults to ""
    //RARCH_LOG("DEFAULT_FONT_FACE: %s\n", DEFAULT_FONT_FACE);
    
-   float font_size = luaL_optinteger(L, 6, DEFAULT_FONT_SIZE);
+   float font_size = luaL_optinteger(L, 6, CONFIG_FONT_SIZE);
    char* font_face = luaL_optstring(L, 7, DEFAULT_FONT_FACE);
    //char* font_face = luaL_optstring(L, 7, "");
    
@@ -2017,8 +2010,8 @@ int gui_drawString_impl(lua_State *L, bool convert_coords)
    
    //gfx_widget_font_data_t *font_regular
    
-   //if (!string_is_empty(font_face) || font_size!=DEFAULT_FONT_SIZE) {
-   if (strcasecmp(font_face, DEFAULT_FONT_FACE)!=0 || font_size!=DEFAULT_FONT_SIZE)
+   //if (!string_is_empty(font_face) || font_size!=CONFIG_FONT_SIZE) {
+   if (strcasecmp(font_face, DEFAULT_FONT_FACE)!=0 || font_size!=CONFIG_FONT_SIZE)
    {
       char fontpath[PATH_MAX_LENGTH] = {0};
       if (!string_is_empty(font_face))
@@ -2057,7 +2050,7 @@ int gui_drawString_impl(lua_State *L, bool convert_coords)
    //unsigned widget_padding = dispwidget_get_ptr()->simple_widget_padding;
    //curr_shape->y += widget_padding;
    //curr_shape->y += (curr_shape->font_size);
-   //curr_shape->y += DEFAULT_FONT_SIZE;
+   //curr_shape->y += CONFIG_FONT_SIZE;
    
    curr_shape->convert_coords = convert_coords;
    
@@ -2084,10 +2077,7 @@ int gui_drawStringO(lua_State *L)
 
 
 int gui_drawRectangle_impl(lua_State *L, bool convert_coords)
-{
-   if (using_hw_framebuffer()) 
-      return luaL_error(L, "cannot draw on hardware framebuffer");
-      
+{     
    gui_shape_t* curr_shape = &gui_shapes[gui_shapes_curr_index];
    
    curr_shape->type = SHAPE_RECT;
@@ -2475,6 +2465,7 @@ void lua_init()
    lua_pop(L, 1);               // pop io table
    
    // TODO: os.remove(filename), os.rename(old, new)
+   // TODO: override variadic print() with tables support -> print_luatable()
    
    // disable unsafe functions
    lua_getglobal(L, "os");
