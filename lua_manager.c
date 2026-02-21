@@ -620,12 +620,16 @@ int client_screenshot(lua_State *L)
    const char *path = luaL_optstring(L, 1, NULL); // optional first argument, defaults to NULL
    if (!path)
       command_event(CMD_EVENT_TAKE_SCREENSHOT, NULL);
+   else
+      return luaL_error(L, "unsupported path arg");
    /*
+   #ifdef HAVE_SCREENSHOTS
    else
       take_screenshot(
         const char *screenshot_dir,
         const char *path, bool silence,
         bool has_valid_framebuffer, bool fullpath, true);
+   #endif
       */
    return 0; 
 }
@@ -635,9 +639,19 @@ int client_screenshot(lua_State *L)
 int client_sleep(lua_State *L)
 {
    lua_Integer ms = luaL_checkinteger(L, 1);
-   if (ms < 0) return luaL_error(L, "emulation_sleep: time must be >= 0");
+   if (ms < 0)
+      return luaL_error(L, "emulation_sleep: time must be >= 0");
    retro_sleep((uint64_t)ms);
    return 0; 
+}
+
+// string client.get_lua_engine()
+// returns the name of the Lua engine currently in use
+int client_get_lua_engine(lua_State *L)
+{
+   lua_getglobal(L, "_VERSION");
+   //lua_pushstring(L, LUA_RELEASE);
+   return 1;
 }
 
 // object client.getconfig()
@@ -967,24 +981,6 @@ int input_getmouse(lua_State *L)
 }
 
 
-
-bool using_hw_framebuffer()
-{
-   /*
-   video_driver_state_t *video_st = video_state_get_ptr();  
-   if (video_st->frame_cache_data && (video_st->frame_cache_data == RETRO_HW_FRAME_BUFFER_VALID))
-      return true;
-   else
-      return false;
-      */
-
-   // ALT from video_driver.h: video_driver_is_hw_context()
-   //bool is_hw_context  = (video_st->hw_render.context_type != RETRO_HW_CONTEXT_NONE);
-   //return is_hw_context;
-   return video_driver_is_hw_context();  // TODO: replace all calls?
-}
-
-
 struct retro_memory_descriptor* find_memory_descriptor(const unsigned int domain)
 {
    rarch_memory_map_t *mmaps = &runloop_state_get_ptr()->system.mmaps;
@@ -1137,7 +1133,7 @@ unsigned int get_memory_domain_arg(lua_State *L, const int DOMAIN_ARG_POS)
             RARCH_ERR("Unable to find domain: %s, falling back to current\n", domain_str);
             //return luaL_error(L, "unsupported memory domain");
    }
-   if (domain == RETRO_MEMORY_VIDEO_RAM && using_hw_framebuffer())
+   if (domain == RETRO_MEMORY_VIDEO_RAM && video_driver_is_hw_context())
       return luaL_error(L, "cannot access hardware framebuffer");
 
    return domain;
@@ -1163,7 +1159,22 @@ int get_memory_value(lua_State *L, const int BYTES_TO_READ, bool with_sign, bool
       value = (int16_t)((data[address]) | (data[address + 1] << 8));
    else if (BYTES_TO_READ == 2 && with_sign == true && big_endian == true) // s16_be
       value = (int16_t)((data[address] << 8) | data[address + 1]);
-   // TODO:BYTES_TO_READ == 3, 4
+   else if (BYTES_TO_READ == 3 && with_sign == false && big_endian == false) // u24_le
+      value = (uint32_t)(data[address] | (data[address + 1] << 8) | (data[address + 2] << 16));
+   else if (BYTES_TO_READ == 3 && with_sign == true && big_endian == false)  // s24_le
+      value = (int32_t)((data[address] | (data[address + 1] << 8) | (data[address + 2] << 16)) << 8) >> 8;
+   else if (BYTES_TO_READ == 3 && with_sign == false && big_endian == true)  // u24_be
+      value = (uint32_t)((data[address] << 16) | (data[address + 1] << 8) | data[address + 2]);
+   else if (BYTES_TO_READ == 3 && with_sign == true && big_endian == true)  // s24_be
+      value = (int32_t)(((data[address] << 16) | (data[address + 1] << 8) | data[address + 2]) << 8) >> 8;
+   else if (BYTES_TO_READ == 4 && with_sign == false && big_endian == false)  // u32_le
+      value = (uint32_t)(data[address] | (data[address + 1] << 8) | (data[address + 2] << 16) | (data[address + 3] << 24));
+   else if (BYTES_TO_READ == 4 && with_sign == true && big_endian == false) // s32_le
+      value = (int32_t)(data[address] | (data[address + 1] << 8) | (data[address + 2] << 16) | (data[address + 3] << 24));
+   else if (BYTES_TO_READ == 4 && with_sign == false && big_endian == true)  // u32_be
+      value = (uint32_t)((data[address] << 24) | (data[address + 1] << 16) | (data[address + 2] << 8) | data[address + 3]);
+   else if (BYTES_TO_READ == 4 && with_sign == true && big_endian == true) // s32_be
+      value = (int32_t)((data[address] << 24) | (data[address + 1] << 16) | (data[address + 2] << 8) | data[address + 3]);
    
    lua_pushinteger(L, value);
    return 1;
@@ -1202,6 +1213,67 @@ int memory_read_s16_be(lua_State *L)
    return get_memory_value(L, 2, true, true);
 }
 
+int memory_read_u24_le(lua_State *L)
+{
+   return get_memory_value(L, 3, false, false);
+}
+
+int memory_read_u24_be(lua_State *L)
+{
+   return get_memory_value(L, 3, false, true);
+}
+
+int memory_read_s24_le(lua_State *L)
+{
+   return get_memory_value(L, 3, true, false);
+}
+
+int memory_read_s24_be(lua_State *L)
+{
+   return get_memory_value(L, 3, true, true);
+}
+
+int memory_read_u32_le(lua_State *L)
+{
+   return get_memory_value(L, 4, false, false);
+}
+
+int memory_read_u32_be(lua_State *L)
+{
+   return get_memory_value(L, 4, false, true);
+}
+
+int memory_read_s32_le(lua_State *L)
+{
+   return get_memory_value(L, 4, true, false);
+}
+
+int memory_read_s32_be(lua_State *L)
+{
+   return get_memory_value(L, 4, true, true);
+}
+
+// single memory.readfloat(long addr, bool bigendian, [string domain = nil])
+// Reads the given address as a 32-bit float value from the main memory domain with th e given endian
+int memory_readfloat(lua_State *L)
+{
+   unsigned int domain = get_memory_domain_arg(L, 3);
+   size_t address = get_memory_address_arg(L, 4, domain);
+   uint8_t *data = get_memory_ptr(L, domain);
+   luaL_checktype(L, 2, LUA_TBOOLEAN);
+   bool big_endian = lua_toboolean(L, 2);
+   float f_value = 0;
+   uint32_t bits = 0;
+   
+   if (big_endian == false) // float LE
+      bits = (data[address] | (data[address + 1] << 8) | (data[address + 2] << 16) | (data[address + 3] << 24));
+   else // float BE
+      bits = ((data[address] << 24) | (data[address + 1] << 16) | (data[address + 2] << 8) | data[address + 3]);
+
+   memcpy(&f_value, &bits, 4); // Copy bits into float variable
+   lua_pushnumber(L, (lua_Number)f_value);
+   return 1;
+}
 
 // rom.readbyte(int address)
 // Get an unsigned byte from the actual ROM file at the given address.  
@@ -1430,7 +1502,7 @@ int emu_getdir(lua_State *L)
 // The "palette" value is actually the 32-bit pixel value.
 int emu_getscreenpixel(lua_State *L)
 {
-   if (using_hw_framebuffer()) 
+   if (video_driver_is_hw_context()) 
       return luaL_error(L, "cannot read hardware framebuffer");
       
    unsigned x = luaL_checkinteger(L, 1);
@@ -1767,43 +1839,6 @@ void lua_draw_gfxs_loop()
                 video_width, video_height,
                 curr_quad_bg_color,
                 NULL);
-            
-            /* draws directly into the framebuffer
-            {
-               if (using_hw_framebuffer()) continue;  // cannot write hardware framebuffer
-               video_driver_state_t *video_st = video_state_get_ptr();
-               const void *frame = (const void*)video_st->frame_cache_data;
-               unsigned width  = video_st->frame_cache_width;
-               unsigned height = video_st->frame_cache_height;
-               size_t pitch   = video_st->frame_cache_pitch;
-               
-               //frame = video_driver_read_frame_raw(&width, &height, &pitch);
-               
-               // Bounds-check
-               if (!frame || x_pos >= width || y_pos >= height)
-                  continue;
-
-               // Locate the pixel (assumes 32bpp XRGB8888)
-               uint32_t *pixels = (uint32_t*)frame;
-               unsigned pitch_pixels = pitch / sizeof(uint32_t);
-               //uint32_t pixel = pixels[y_pos * pitch_pixels + x_pos];
-
-               // Extract RGB (R = high byte, B = low byte)
-               //uint8_t r = (pixel >> 16) & 0xFF;
-               //uint8_t g = (pixel >>  8) & 0xFF;
-               //uint8_t b = (pixel     ) & 0xFF;
-               
-               for(int i = 0; i < curr_shape->width; i++)
-                  for(int j = 0; j < curr_shape->height; j++)
-                  {
-                     int y = (int)curr_shape->y + j;
-                     int x = (int)curr_shape->x + i;
-                     //RARCH_LOG("%d %d %x \n", x, y, pixels[y * pitch_pixels + x]);
-                     pixels[y * pitch_pixels + x] = (curr_shape->bg_color); // TODO: needs shiftin
-                  }
-               
-               //video_driver_cached_frame();  // forced frame update
-            }*/
             
             break;
          }
@@ -2241,9 +2276,16 @@ static const struct luaL_Reg  clientlib [] = {
    { "closerom" , client_closerom },  
    { "screenshot", client_screenshot },
    { "sleep" , client_sleep },  
+   { "exactsleep" , client_sleep },  
    { "getconfig" , client_getconfig },  
    { "transformPoint" , client_transformPoint },  
-   // client.openrom(string path)  -> core_load_game
+   { "get_lua_engine" , client_get_lua_engine },  
+   //TODO: client.openrom(string path)  // core_load_game
+   //TODO: client.displaymessages
+   //TODO: client.enablerewind
+   //TODO: client.get_approx_framerate
+   //TODO: client.GetSoundOn  // settings->bools.audio_enable_menu
+   //TODO: client.SetSoundOn
    {NULL,NULL}
 };
 
@@ -2258,7 +2300,7 @@ static const struct luaL_Reg  guilib[] = {
    { "text" ,  gui_drawPixelText },
    { "drawRectangle" ,  gui_drawRectangle },
    { "drawRectangleO" ,  gui_drawRectangleO },
-   { "drawPixel" ,  gui_drawPixel },
+   //{ "drawPixel" ,  gui_drawPixel },
    { "clearGraphics" ,  gui_clearGraphics },
    { "cleartext" ,  gui_clearGraphics },
    //TODO: drawLine
@@ -2306,8 +2348,14 @@ static const struct luaL_Reg  memorylib [] = {
    { "read_s16_le" ,  memory_read_s16_le },
    { "read_u16_be" ,  memory_read_u16_be },
    { "read_u16_le" ,  memory_read_u16_le },
-   // TODO: read_u/s24_be(le
-   // TODO: read_u/s32_be(le
+   { "read_s24_be" ,  memory_read_s24_be },
+   { "read_s24_le" ,  memory_read_s24_le },
+   { "read_u24_be" ,  memory_read_u24_be },
+   { "read_u24_le" ,  memory_read_u24_le },
+   { "read_s32_be" ,  memory_read_s32_be },
+   { "read_s32_le" ,  memory_read_s32_le },
+   { "read_u32_be" ,  memory_read_u32_be },
+   { "read_u32_le" ,  memory_read_u32_le },
    { "readbyterange" ,  memory_readbyterange },
    { "read_bytes_as_array" ,  memory_readbyterange },
    { "usememorydomain", memory_usememorydomain },
@@ -2318,7 +2366,7 @@ static const struct luaL_Reg  memorylib [] = {
    { "hash_region" ,  memory_hash_region },
    { "writebyte" ,  memory_writebyte },
    { "write_u8" ,  memory_writebyte },
-   // TODO: write_s8 / 16/ 32
+   // TODO: write_s8 / 16/ 32, float
    { "write_bytes_as_array" ,  memory_write_bytes_as_array },
    //TODO: { "write_bytes_as_dict" ,  memory_write_bytes_as_dict },
    // FCEUX-aliases
@@ -2326,7 +2374,7 @@ static const struct luaL_Reg  memorylib [] = {
    { "readbytesigned" ,  memory_readbytesigned },
    { "readwordsigned" ,  memory_read_s16_le },
    { "readword" ,  memory_read_u16_le },
-   //TODO: { "readfloat" ,  memory_readfloat },
+   { "readfloat" ,  memory_readfloat },
    // new functions:
    // TODO: memory.dump(filename, domain) // dump the whole buffer into a file
    // TODO: memory.search(pattern, start_address, domain) // search for a byte pattern, returns the address of the first match.
