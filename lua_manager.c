@@ -1275,6 +1275,40 @@ int memory_readfloat(lua_State *L)
    return 1;
 }
 
+// void memory.writefloat(long addr, singlevalue, bool bigendian, [string domain = nil])
+// Writes the given 32-bit float value to the given address and endian
+int memory_writefloat(lua_State *L)
+{
+   const unsigned int domain = get_memory_domain_arg(L, 4);
+   const size_t address = get_memory_address_arg(L, 4, domain);
+   float value = (float)luaL_checknumber(L, 2);
+   uint8_t *data = get_memory_ptr(L, domain);
+   luaL_checktype(L, 3, LUA_TBOOLEAN);
+   bool big_endian = lua_toboolean(L, 3);
+   
+   // Convert float bits to an unsigned integer for shifting
+   uint32_t bits = 0;
+   memcpy(&bits, &value, 4);
+
+   // Write bytes to memory based on endianness
+   if (big_endian == false) // Little Endian
+   {
+      data[address]     = (uint8_t)(bits & 0xFF);
+      data[address + 1] = (uint8_t)((bits >> 8) & 0xFF);
+      data[address + 2] = (uint8_t)((bits >> 16) & 0xFF);
+      data[address + 3] = (uint8_t)((bits >> 24) & 0xFF);
+   }
+   else // Big Endian
+   {
+      data[address]     = (uint8_t)((bits >> 24) & 0xFF);
+      data[address + 1] = (uint8_t)((bits >> 16) & 0xFF);
+      data[address + 2] = (uint8_t)((bits >> 8) & 0xFF);
+      data[address + 3] = (uint8_t)(bits & 0xFF);
+   }
+
+   return 0;
+}
+
 // rom.readbyte(int address)
 // Get an unsigned byte from the actual ROM file at the given address.  
 int rom_readbyte(lua_State *L)
@@ -1283,17 +1317,131 @@ int rom_readbyte(lua_State *L)
    return get_memory_value(L, 1, false, false);
 }
 
-// void memory.writebyte(long addr, uint value, [string domain = nil])
-// Writes the given value to the given address as an unsigned byte
-int memory_writebyte(lua_State *L)
+int set_memory_value(lua_State *L, const int BYTES_TO_WRITE, bool with_sign, bool big_endian)
 {
-   const unsigned int domain = get_memory_domain_arg(L, 3);
-   const size_t address = get_memory_address_arg(L, 1, domain);
-   unsigned int value = (unsigned int)luaL_checkinteger(L, 2);
+   // 1. Get arguments from Lua
+   // Value is usually the 2nd arg in a setter: memory.write(addr, value, ...)
+   int value = (int)luaL_checkinteger(L, 2); 
+   unsigned int domain = get_memory_domain_arg(L, 3);
+   size_t address = get_memory_address_arg(L, BYTES_TO_WRITE, domain);
    uint8_t *data = get_memory_ptr(L, domain);
    
-   *(data + address) = (uint8_t)value;
+   // Note: 'with_sign' is not used in the logic because the bit pattern 
+   // for signed/unsigned integers is the same when writing raw bytes.
+
+   // Perform the write based on size and endianness
+   if (BYTES_TO_WRITE == 1) {
+      data[address] = (uint8_t)(value & 0xFF);
+   }
+   // 2 Bytes - Little Endian
+   else if (BYTES_TO_WRITE == 2 && big_endian == false) {
+      data[address]     = (uint8_t)(value & 0xFF);
+      data[address + 1] = (uint8_t)((value >> 8) & 0xFF);
+   }
+   // 2 Bytes - Big Endian
+   else if (BYTES_TO_WRITE == 2 && big_endian == true) {
+      data[address]     = (uint8_t)((value >> 8) & 0xFF);
+      data[address + 1] = (uint8_t)(value & 0xFF);
+   }
+   // 3 Bytes - Little Endian
+   else if (BYTES_TO_WRITE == 3 && big_endian == false) {
+      data[address]     = (uint8_t)(value & 0xFF);
+      data[address + 1] = (uint8_t)((value >> 8) & 0xFF);
+      data[address + 2] = (uint8_t)((value >> 16) & 0xFF);
+   }
+   // 3 Bytes - Big Endian
+   else if (BYTES_TO_WRITE == 3 && big_endian == true) {
+      data[address]     = (uint8_t)((value >> 16) & 0xFF);
+      data[address + 1] = (uint8_t)((value >> 8) & 0xFF);
+      data[address + 2] = (uint8_t)(value & 0xFF);
+   }
+   // 4 Bytes - Little Endian
+   else if (BYTES_TO_WRITE == 4 && big_endian == false) {
+      data[address]     = (uint8_t)(value & 0xFF);
+      data[address + 1] = (uint8_t)((value >> 8) & 0xFF);
+      data[address + 2] = (uint8_t)((value >> 16) & 0xFF);
+      data[address + 3] = (uint8_t)((value >> 24) & 0xFF);
+   }
+   // 4 Bytes - Big Endian
+   else if (BYTES_TO_WRITE == 4 && big_endian == true) {
+      data[address]     = (uint8_t)((value >> 24) & 0xFF);
+      data[address + 1] = (uint8_t)((value >> 16) & 0xFF);
+      data[address + 2] = (uint8_t)((value >> 8) & 0xFF);
+      data[address + 3] = (uint8_t)(value & 0xFF);
+   }
+
    return 0;
+}
+
+
+int memory_write_u8(lua_State *L)
+{
+   return set_memory_value(L, 1, false, false);
+}
+
+int memory_write_s8(lua_State *L)
+{
+   return set_memory_value(L, 1, true, false);
+}
+
+int memory_write_u16_le(lua_State *L)
+{
+   return set_memory_value(L, 2, false, false);
+}
+
+int memory_write_u16_be(lua_State *L)
+{
+   return set_memory_value(L, 2, false, true);
+}
+
+int memory_write_s16_le(lua_State *L)
+{
+   return set_memory_value(L, 2, true, false);
+}
+
+int memory_write_s16_be(lua_State *L)
+{
+   return set_memory_value(L, 2, true, true);
+}
+
+int memory_write_u24_le(lua_State *L)
+{
+   return set_memory_value(L, 3, false, false);
+}
+
+int memory_write_u24_be(lua_State *L)
+{
+   return set_memory_value(L, 3, false, true);
+}
+
+int memory_write_s24_le(lua_State *L)
+{
+   return set_memory_value(L, 3, true, false);
+}
+
+int memory_write_s24_be(lua_State *L)
+{
+   return set_memory_value(L, 3, true, true);
+}
+
+int memory_write_u32_le(lua_State *L)
+{
+   return set_memory_value(L, 4, false, false);
+}
+
+int memory_write_u32_be(lua_State *L)
+{
+   return set_memory_value(L, 4, false, true);
+}
+
+int memory_write_s32_le(lua_State *L)
+{
+   return set_memory_value(L, 4, true, false);
+}
+
+int memory_write_s32_be(lua_State *L)
+{
+   return set_memory_value(L, 4, true, true);
 }
 
 // void memory.write_bytes_as_array(long addr, nluatable bytes, [string domain = nil])
@@ -2364,9 +2512,21 @@ static const struct luaL_Reg  memorylib [] = {
    { "getmemorydomainlist" ,  memory_getmemorydomainlist },
    { "getmemorydomainsize" ,  memory_getmemorydomainsize },
    { "hash_region" ,  memory_hash_region },
-   { "writebyte" ,  memory_writebyte },
-   { "write_u8" ,  memory_writebyte },
-   // TODO: write_s8 / 16/ 32, float
+   { "writebyte" ,  memory_write_u8 },
+   { "write_u8" ,  memory_write_u8 },
+   { "write_s8" ,  memory_write_s8 },
+   { "write_s16_be" ,  memory_write_s16_be },
+   { "write_s16_le" ,  memory_write_s16_le },
+   { "write_u16_be" ,  memory_write_u16_be },
+   { "write_u16_le" ,  memory_write_u16_le },
+   { "write_s24_be" ,  memory_write_s24_be },
+   { "write_s24_le" ,  memory_write_s24_le },
+   { "write_u24_be" ,  memory_write_u24_be },
+   { "write_u24_le" ,  memory_write_u24_le },
+   { "write_s32_be" ,  memory_write_s32_be },
+   { "write_s32_le" ,  memory_write_s32_le },
+   { "write_u32_be" ,  memory_write_u32_be },
+   { "write_u32_le" ,  memory_write_u32_le },
    { "write_bytes_as_array" ,  memory_write_bytes_as_array },
    //TODO: { "write_bytes_as_dict" ,  memory_write_bytes_as_dict },
    // FCEUX-aliases
@@ -2375,6 +2535,7 @@ static const struct luaL_Reg  memorylib [] = {
    { "readwordsigned" ,  memory_read_s16_le },
    { "readword" ,  memory_read_u16_le },
    { "readfloat" ,  memory_readfloat },
+   { "writefloat" ,  memory_writefloat },
    // new functions:
    // TODO: memory.dump(filename, domain) // dump the whole buffer into a file
    // TODO: memory.search(pattern, start_address, domain) // search for a byte pattern, returns the address of the first match.
