@@ -654,9 +654,23 @@ int client_get_lua_engine(lua_State *L)
    return 1;
 }
 
+
+#define PUSH_STR(L, struct_ptr, field) \
+    lua_pushstring(L, #field); \
+    lua_pushstring(L, struct_ptr.field); \
+    lua_settable(L, -3)
+    
+#define PUSH_BOOL(L, st, field) \
+    lua_pushboolean(L, st.field); \
+    lua_setfield(L, -2, #field)
+
+#define PUSH_NUMBER(L, st, field) \
+    lua_pushnumber(L, (double)st.field); \
+    lua_setfield(L, -2, #field)
+    
+    
 // object client.getconfig()
 // gets the current config settings object
-// TODO: add more fields, should match the names used here https://github.com/TASEmulators/BizHawk/blob/master/src/BizHawk.Client.Common/config/Config.cs
 int client_getconfig(lua_State *L)
 {
    settings_t *settings         = config_get_ptr();
@@ -666,15 +680,880 @@ int client_getconfig(lua_State *L)
    lua_pushinteger(L, settings->ints.state_slot);
    lua_setfield(L, -2, "SaveSlot");
 
-   //lua_pushnumber(L, settings->floats.video_font_size);
-   //lua_setfield(L, -2, "FontSize");
-   
-   // TODO: more settings
    /*
    // Set another field, e.g., PauseOnFrame = true
    lua_pushboolean(L, 0);           // false
    lua_setfield(L, -2, "PauseOnFrame"); 
    */
+   
+   // TODO: add more bizhawk-compatible fields, should match the names used here https://github.com/TASEmulators/BizHawk/blob/master/src/BizHawk.Client.Common/config/Config.cs
+   // LibretroCore -> string like "mednafen_saturn_libretro.so"
+   // RecentRoms -> table
+   // RecentCores
+   // PreferredCores
+   // RecentLua
+   // PathEntries -> nested dict: client.getconfig().PathEntries["Paths"][0]["Type"]
+   //const char* app_path = path_get(RARCH_PATH_CONFIG);  // current config path (e.g. retroarch.cfg)
+   //const char* app_path = settings->paths.directory_system; 
+
+   
+
+   // Retroarch-specific settings
+   
+   // uints
+   //PUSH_NUMBER(L, settings->uints, input_split_joycon[MAX_USERS]);
+   //PUSH_NUMBER(L, settings->uints, input_joypad_index[MAX_USERS]);
+   //PUSH_NUMBER(L, settings->uints, input_device[MAX_USERS]);
+   //PUSH_NUMBER(L, settings->uints, input_mouse_index[MAX_USERS]);
+   //PUSH_NUMBER(L, settings->uints, input_libretro_device[MAX_USERS]);
+   //PUSH_NUMBER(L, settings->uints, input_analog_dpad_mode[MAX_USERS]);
+   //PUSH_NUMBER(L, settings->uints, input_device_reservation_type[MAX_USERS]);
+   //PUSH_NUMBER(L, settings->uints, input_remap_ports[MAX_USERS]);
+   //PUSH_NUMBER(L, settings->uints, input_remap_ids[MAX_USERS][RARCH_CUSTOM_BIND_LIST_END]);
+   //PUSH_NUMBER(L, settings->uints, input_keymapper_ids[MAX_USERS][RARCH_CUSTOM_BIND_LIST_END]);
+   //PUSH_NUMBER(L, settings->uints, input_remap_port_map[MAX_USERS][MAX_USERS + 1]);
+   //PUSH_NUMBER(L, settings->uints, led_map[MAX_LEDS]);
+   PUSH_NUMBER(L, settings->uints, audio_output_sample_rate);
+   PUSH_NUMBER(L, settings->uints, audio_block_frames);
+   PUSH_NUMBER(L, settings->uints, audio_latency);
+#ifdef HAVE_WASAPI
+   PUSH_NUMBER(L, settings->uints, audio_wasapi_sh_buffer_length);
+#endif
+#ifdef HAVE_MICROPHONE
+   PUSH_NUMBER(L, settings->uints, microphone_sample_rate);
+   PUSH_NUMBER(L, settings->uints, microphone_block_frames);
+   PUSH_NUMBER(L, settings->uints, microphone_latency);
+   PUSH_NUMBER(L, settings->uints, microphone_resampler_quality);
+#ifdef HAVE_WASAPI
+   PUSH_NUMBER(L, settings->uints, microphone_wasapi_sh_buffer_length);
+#endif
+#endif
+   PUSH_NUMBER(L, settings->uints, fps_update_interval);
+   PUSH_NUMBER(L, settings->uints, memory_update_interval);
+   PUSH_NUMBER(L, settings->uints, input_block_timeout);
+   PUSH_NUMBER(L, settings->uints, audio_resampler_quality);
+   PUSH_NUMBER(L, settings->uints, input_turbo_period);
+   PUSH_NUMBER(L, settings->uints, input_turbo_duty_cycle);
+   PUSH_NUMBER(L, settings->uints, input_turbo_mode);
+   PUSH_NUMBER(L, settings->uints, input_turbo_button);
+   PUSH_NUMBER(L, settings->uints, input_bind_timeout);
+   PUSH_NUMBER(L, settings->uints, input_bind_hold);
+#ifdef GEKKO
+   PUSH_NUMBER(L, settings->uints, input_mouse_scale);
+#endif
+   PUSH_NUMBER(L, settings->uints, input_touch_scale);
+   PUSH_NUMBER(L, settings->uints, input_hotkey_block_delay);
+   PUSH_NUMBER(L, settings->uints, input_quit_gamepad_combo);
+   PUSH_NUMBER(L, settings->uints, input_menu_toggle_gamepad_combo);
+   PUSH_NUMBER(L, settings->uints, input_keyboard_gamepad_mapping_type);
+   PUSH_NUMBER(L, settings->uints, input_poll_type_behavior);
+   PUSH_NUMBER(L, settings->uints, input_rumble_gain);
+   PUSH_NUMBER(L, settings->uints, input_auto_game_focus);
+   PUSH_NUMBER(L, settings->uints, input_max_users);
+   PUSH_NUMBER(L, settings->uints, netplay_port);
+   PUSH_NUMBER(L, settings->uints, netplay_max_connections);
+   PUSH_NUMBER(L, settings->uints, netplay_max_ping);
+   PUSH_NUMBER(L, settings->uints, netplay_chat_color_name);
+   PUSH_NUMBER(L, settings->uints, netplay_chat_color_msg);
+   PUSH_NUMBER(L, settings->uints, netplay_input_latency_frames_min);
+   PUSH_NUMBER(L, settings->uints, netplay_input_latency_frames_range);
+   PUSH_NUMBER(L, settings->uints, netplay_share_digital);
+   PUSH_NUMBER(L, settings->uints, netplay_share_analog);
+   PUSH_NUMBER(L, settings->uints, bundle_assets_extract_version_current);
+   PUSH_NUMBER(L, settings->uints, bundle_assets_extract_last_version);
+   PUSH_NUMBER(L, settings->uints, content_history_size);
+   PUSH_NUMBER(L, settings->uints, frontend_log_level);
+   PUSH_NUMBER(L, settings->uints, libretro_log_level);
+   PUSH_NUMBER(L, settings->uints, rewind_granularity);
+   PUSH_NUMBER(L, settings->uints, rewind_buffer_size_step);
+   PUSH_NUMBER(L, settings->uints, autosave_interval);
+   PUSH_NUMBER(L, settings->uints, replay_checkpoint_interval);
+   PUSH_NUMBER(L, settings->uints, replay_max_keep);
+   PUSH_NUMBER(L, settings->uints, savestate_max_keep);
+   PUSH_NUMBER(L, settings->uints, network_cmd_port);
+   PUSH_NUMBER(L, settings->uints, network_remote_base_port);
+   PUSH_NUMBER(L, settings->uints, keymapper_port);
+   PUSH_NUMBER(L, settings->uints, video_window_opacity);
+   PUSH_NUMBER(L, settings->uints, crt_switch_resolution);
+   PUSH_NUMBER(L, settings->uints, crt_switch_resolution_super);
+   PUSH_NUMBER(L, settings->uints, screen_brightness);
+   PUSH_NUMBER(L, settings->uints, video_monitor_index);
+   PUSH_NUMBER(L, settings->uints, video_fullscreen_x);
+   PUSH_NUMBER(L, settings->uints, video_fullscreen_y);
+   PUSH_NUMBER(L, settings->uints, video_scale);
+   PUSH_NUMBER(L, settings->uints, video_scale_integer_axis);
+   PUSH_NUMBER(L, settings->uints, video_scale_integer_scaling);
+   PUSH_NUMBER(L, settings->uints, video_max_swapchain_images);
+   PUSH_NUMBER(L, settings->uints, video_swap_interval);
+   PUSH_NUMBER(L, settings->uints, video_hard_sync_frames);
+   PUSH_NUMBER(L, settings->uints, video_frame_delay);
+   PUSH_NUMBER(L, settings->uints, video_viwidth);
+   PUSH_NUMBER(L, settings->uints, video_aspect_ratio_idx);
+   PUSH_NUMBER(L, settings->uints, video_rotation);
+   PUSH_NUMBER(L, settings->uints, screen_orientation);
+   PUSH_NUMBER(L, settings->uints, video_msg_bgcolor_red);
+   PUSH_NUMBER(L, settings->uints, video_msg_bgcolor_green);
+   PUSH_NUMBER(L, settings->uints, video_msg_bgcolor_blue);
+   PUSH_NUMBER(L, settings->uints, video_stream_port);
+   PUSH_NUMBER(L, settings->uints, video_record_quality);
+   PUSH_NUMBER(L, settings->uints, video_stream_quality);
+   PUSH_NUMBER(L, settings->uints, video_record_scale_factor);
+   PUSH_NUMBER(L, settings->uints, video_stream_scale_factor);
+   PUSH_NUMBER(L, settings->uints, video_3ds_display_mode);
+   PUSH_NUMBER(L, settings->uints, video_dingux_ipu_filter_type);
+   PUSH_NUMBER(L, settings->uints, video_dingux_refresh_rate);
+   PUSH_NUMBER(L, settings->uints, video_dingux_rs90_softfilter_type);
+#ifdef GEKKO
+   PUSH_NUMBER(L, settings->uints, video_overscan_correction_top);
+   PUSH_NUMBER(L, settings->uints, video_overscan_correction_bottom);
+#endif
+   PUSH_NUMBER(L, settings->uints, video_shader_delay);
+#ifdef HAVE_SCREENSHOTS
+   PUSH_NUMBER(L, settings->uints, notification_show_screenshot_duration);
+   PUSH_NUMBER(L, settings->uints, notification_show_screenshot_flash);
+#endif
+   /* Accessibility */
+   PUSH_NUMBER(L, settings->uints, accessibility_narrator_speech_speed);
+   PUSH_NUMBER(L, settings->uints, menu_timedate_style);
+   PUSH_NUMBER(L, settings->uints, menu_timedate_date_separator);
+   PUSH_NUMBER(L, settings->uints, gfx_thumbnails);
+   PUSH_NUMBER(L, settings->uints, menu_left_thumbnails);
+   PUSH_NUMBER(L, settings->uints, menu_icon_thumbnails);
+   PUSH_NUMBER(L, settings->uints, gfx_thumbnail_upscale_threshold);
+   PUSH_NUMBER(L, settings->uints, menu_rgui_thumbnail_downscaler);
+   PUSH_NUMBER(L, settings->uints, menu_rgui_thumbnail_delay);
+   PUSH_NUMBER(L, settings->uints, menu_rgui_color_theme);
+   PUSH_NUMBER(L, settings->uints, menu_xmb_animation_opening_main_menu);
+   PUSH_NUMBER(L, settings->uints, menu_xmb_animation_horizontal_highlight);
+   PUSH_NUMBER(L, settings->uints, menu_xmb_animation_move_up_down);
+   PUSH_NUMBER(L, settings->uints, menu_xmb_layout);
+   PUSH_NUMBER(L, settings->uints, menu_xmb_shader_pipeline);
+   PUSH_NUMBER(L, settings->uints, menu_xmb_alpha_factor);
+   PUSH_NUMBER(L, settings->uints, menu_xmb_theme);
+   PUSH_NUMBER(L, settings->uints, menu_xmb_color_theme);
+   PUSH_NUMBER(L, settings->uints, menu_xmb_thumbnail_scale_factor);
+   PUSH_NUMBER(L, settings->uints, menu_xmb_vertical_fade_factor);
+   PUSH_NUMBER(L, settings->uints, menu_materialui_color_theme);
+   PUSH_NUMBER(L, settings->uints, menu_materialui_transition_animation);
+   PUSH_NUMBER(L, settings->uints, menu_materialui_thumbnail_view_portrait);
+   PUSH_NUMBER(L, settings->uints, menu_materialui_thumbnail_view_landscape);
+   PUSH_NUMBER(L, settings->uints, menu_materialui_landscape_layout_optimization);
+   PUSH_NUMBER(L, settings->uints, menu_ozone_color_theme);
+   PUSH_NUMBER(L, settings->uints, menu_ozone_header_separator);
+   PUSH_NUMBER(L, settings->uints, menu_ozone_font_scale);
+   PUSH_NUMBER(L, settings->uints, menu_font_color_red);
+   PUSH_NUMBER(L, settings->uints, menu_font_color_green);
+   PUSH_NUMBER(L, settings->uints, menu_font_color_blue);
+   PUSH_NUMBER(L, settings->uints, menu_rgui_internal_upscale_level);
+   PUSH_NUMBER(L, settings->uints, menu_rgui_aspect_ratio);
+   PUSH_NUMBER(L, settings->uints, menu_rgui_aspect_ratio_lock);
+   PUSH_NUMBER(L, settings->uints, menu_rgui_particle_effect);
+   PUSH_NUMBER(L, settings->uints, menu_ticker_type);
+   PUSH_NUMBER(L, settings->uints, menu_scroll_delay);
+   PUSH_NUMBER(L, settings->uints, menu_content_show_add_entry);
+   PUSH_NUMBER(L, settings->uints, menu_content_show_contentless_cores);
+   PUSH_NUMBER(L, settings->uints, menu_screensaver_timeout);
+   PUSH_NUMBER(L, settings->uints, menu_screensaver_animation);
+   PUSH_NUMBER(L, settings->uints, menu_remember_selection);
+   PUSH_NUMBER(L, settings->uints, menu_startup_page);
+   PUSH_NUMBER(L, settings->uints, playlist_entry_remove_enable);
+   PUSH_NUMBER(L, settings->uints, playlist_show_inline_core_name);
+   PUSH_NUMBER(L, settings->uints, playlist_show_history_icons);
+   PUSH_NUMBER(L, settings->uints, playlist_sublabel_runtime_type);
+   PUSH_NUMBER(L, settings->uints, playlist_sublabel_last_played_style);
+   PUSH_NUMBER(L, settings->uints, camera_width);
+   PUSH_NUMBER(L, settings->uints, camera_height);
+#ifdef HAVE_OVERLAY
+   PUSH_NUMBER(L, settings->uints, input_overlay_show_inputs);
+   PUSH_NUMBER(L, settings->uints, input_overlay_show_inputs_port);
+   PUSH_NUMBER(L, settings->uints, input_overlay_dpad_diagonal_sensitivity);
+   PUSH_NUMBER(L, settings->uints, input_overlay_abxy_diagonal_sensitivity);
+   PUSH_NUMBER(L, settings->uints, input_overlay_analog_recenter_zone);
+   PUSH_NUMBER(L, settings->uints, input_overlay_lightgun_trigger_delay);
+   PUSH_NUMBER(L, settings->uints, input_overlay_lightgun_two_touch_input);
+   PUSH_NUMBER(L, settings->uints, input_overlay_lightgun_three_touch_input);
+   PUSH_NUMBER(L, settings->uints, input_overlay_lightgun_four_touch_input);
+   PUSH_NUMBER(L, settings->uints, input_overlay_mouse_hold_msec);
+   PUSH_NUMBER(L, settings->uints, input_overlay_mouse_dtap_msec);
+#endif
+   PUSH_NUMBER(L, settings->uints, run_ahead_frames);
+   PUSH_NUMBER(L, settings->uints, midi_volume);
+   PUSH_NUMBER(L, settings->uints, streaming_mode);
+   PUSH_NUMBER(L, settings->uints, window_position_x);
+   PUSH_NUMBER(L, settings->uints, window_position_y);
+   PUSH_NUMBER(L, settings->uints, window_position_width);
+   PUSH_NUMBER(L, settings->uints, window_position_height);
+   PUSH_NUMBER(L, settings->uints, window_auto_width_max);
+   PUSH_NUMBER(L, settings->uints, window_auto_height_max);
+   PUSH_NUMBER(L, settings->uints, video_record_threads);
+   PUSH_NUMBER(L, settings->uints, libnx_overclock);
+   PUSH_NUMBER(L, settings->uints, ai_service_mode);
+   PUSH_NUMBER(L, settings->uints, ai_service_target_lang);
+   PUSH_NUMBER(L, settings->uints, ai_service_source_lang);
+   PUSH_NUMBER(L, settings->uints, core_updater_auto_backup_history_size);
+   PUSH_NUMBER(L, settings->uints, video_black_frame_insertion);
+   PUSH_NUMBER(L, settings->uints, video_bfi_dark_frames);
+   PUSH_NUMBER(L, settings->uints, video_shader_subframes);
+   PUSH_NUMBER(L, settings->uints, video_autoswitch_refresh_rate);
+   PUSH_NUMBER(L, settings->uints, quit_on_close_content);
+#ifdef HAVE_LAKKA
+   PUSH_NUMBER(L, settings->uints, cpu_scaling_mode);
+   PUSH_NUMBER(L, settings->uints, cpu_min_freq);
+   PUSH_NUMBER(L, settings->uints, cpu_max_freq);
+#endif
+#ifdef HAVE_MIST
+   PUSH_NUMBER(L, settings->uints, steam_rich_presence_format);
+#endif
+   PUSH_NUMBER(L, settings->uints, cheevos_appearance_anchor);
+   PUSH_NUMBER(L, settings->uints, cheevos_visibility_summary);
+      
+   // floats
+   PUSH_NUMBER(L, settings->floats, video_aspect_ratio);
+   PUSH_NUMBER(L, settings->floats, video_vp_bias_x);
+   PUSH_NUMBER(L, settings->floats, video_vp_bias_y);
+#if defined(RARCH_MOBILE)
+   PUSH_NUMBER(L, settings->floats, video_vp_bias_portrait_x);
+   PUSH_NUMBER(L, settings->floats, video_vp_bias_portrait_y);
+#endif
+   PUSH_NUMBER(L, settings->floats, video_refresh_rate);
+   PUSH_NUMBER(L, settings->floats, video_autoswitch_pal_threshold);
+   PUSH_NUMBER(L, settings->floats, crt_video_refresh_rate);
+   PUSH_NUMBER(L, settings->floats, video_font_size);
+   PUSH_NUMBER(L, settings->floats, video_msg_pos_x);
+   PUSH_NUMBER(L, settings->floats, video_msg_pos_y);
+   PUSH_NUMBER(L, settings->floats, video_msg_color_r);
+   PUSH_NUMBER(L, settings->floats, video_msg_color_g);
+   PUSH_NUMBER(L, settings->floats, video_msg_color_b);
+   PUSH_NUMBER(L, settings->floats, video_msg_bgcolor_opacity);
+   PUSH_NUMBER(L, settings->floats, video_hdr_max_nits);
+   PUSH_NUMBER(L, settings->floats, video_hdr_paper_white_nits);
+   PUSH_NUMBER(L, settings->floats, video_hdr_display_contrast);
+   PUSH_NUMBER(L, settings->floats, menu_scale_factor);
+   PUSH_NUMBER(L, settings->floats, menu_widget_scale_factor);
+   PUSH_NUMBER(L, settings->floats, menu_widget_scale_factor_windowed);
+   PUSH_NUMBER(L, settings->floats, menu_wallpaper_opacity);
+   PUSH_NUMBER(L, settings->floats, menu_framebuffer_opacity);
+   PUSH_NUMBER(L, settings->floats, menu_footer_opacity);
+   PUSH_NUMBER(L, settings->floats, menu_header_opacity);
+   PUSH_NUMBER(L, settings->floats, menu_ticker_speed);
+   PUSH_NUMBER(L, settings->floats, menu_rgui_particle_effect_speed);
+   PUSH_NUMBER(L, settings->floats, menu_screensaver_animation_speed);
+   PUSH_NUMBER(L, settings->floats, ozone_padding_factor);
+   PUSH_NUMBER(L, settings->floats, ozone_thumbnail_scale_factor);
+   PUSH_NUMBER(L, settings->floats, ozone_font_scale_factor_global);
+   PUSH_NUMBER(L, settings->floats, ozone_font_scale_factor_title);
+   PUSH_NUMBER(L, settings->floats, ozone_font_scale_factor_sidebar);
+   PUSH_NUMBER(L, settings->floats, ozone_font_scale_factor_label);
+   PUSH_NUMBER(L, settings->floats, ozone_font_scale_factor_sublabel);
+   PUSH_NUMBER(L, settings->floats, ozone_font_scale_factor_time);
+   PUSH_NUMBER(L, settings->floats, ozone_font_scale_factor_footer);
+   PUSH_NUMBER(L, settings->floats, cheevos_appearance_padding_h);
+   PUSH_NUMBER(L, settings->floats, cheevos_appearance_padding_v);
+   PUSH_NUMBER(L, settings->floats, audio_max_timing_skew);
+   PUSH_NUMBER(L, settings->floats, audio_volume); /* dB scale. */
+   PUSH_NUMBER(L, settings->floats, audio_mixer_volume); /* dB scale. */
+   PUSH_NUMBER(L, settings->floats, input_overlay_opacity);
+   PUSH_NUMBER(L, settings->floats, input_osk_overlay_opacity);
+   PUSH_NUMBER(L, settings->floats, input_overlay_scale_landscape);
+   PUSH_NUMBER(L, settings->floats, input_overlay_aspect_adjust_landscape);
+   PUSH_NUMBER(L, settings->floats, input_overlay_x_separation_landscape);
+   PUSH_NUMBER(L, settings->floats, input_overlay_y_separation_landscape);
+   PUSH_NUMBER(L, settings->floats, input_overlay_x_offset_landscape);
+   PUSH_NUMBER(L, settings->floats, input_overlay_y_offset_landscape);
+   PUSH_NUMBER(L, settings->floats, input_overlay_scale_portrait);
+   PUSH_NUMBER(L, settings->floats, input_overlay_aspect_adjust_portrait);
+   PUSH_NUMBER(L, settings->floats, input_overlay_x_separation_portrait);
+   PUSH_NUMBER(L, settings->floats, input_overlay_y_separation_portrait);
+   PUSH_NUMBER(L, settings->floats, input_overlay_x_offset_portrait);
+   PUSH_NUMBER(L, settings->floats, input_overlay_y_offset_portrait);
+   PUSH_NUMBER(L, settings->floats, input_overlay_mouse_speed);
+   PUSH_NUMBER(L, settings->floats, input_overlay_mouse_swipe_threshold);
+   PUSH_NUMBER(L, settings->floats, slowmotion_ratio);
+   PUSH_NUMBER(L, settings->floats, fastforward_ratio);
+   PUSH_NUMBER(L, settings->floats, input_analog_deadzone);
+   PUSH_NUMBER(L, settings->floats, input_axis_threshold);
+   PUSH_NUMBER(L, settings->floats, input_analog_sensitivity);
+   PUSH_NUMBER(L, settings->floats, input_sensor_accelerometer_sensitivity);
+   PUSH_NUMBER(L, settings->floats, input_sensor_gyroscope_sensitivity);
+#ifdef _3DS
+   PUSH_NUMBER(L, settings->floats, bottom_font_scale);
+#endif
+
+   // arrays
+   PUSH_STR(L, settings->arrays, video_driver);
+   PUSH_STR(L, settings->arrays, record_driver);
+   PUSH_STR(L, settings->arrays, camera_driver);
+   PUSH_STR(L, settings->arrays, bluetooth_driver);
+   PUSH_STR(L, settings->arrays, wifi_driver);
+   PUSH_STR(L, settings->arrays, led_driver);
+   PUSH_STR(L, settings->arrays, location_driver);
+   PUSH_STR(L, settings->arrays, cloud_sync_driver);
+   PUSH_STR(L, settings->arrays, menu_driver);
+   PUSH_STR(L, settings->arrays, cheevos_username);
+   PUSH_STR(L, settings->arrays, cheevos_token);
+   PUSH_STR(L, settings->arrays, cheevos_leaderboards_enable);
+   PUSH_STR(L, settings->arrays, video_context_driver);
+   PUSH_STR(L, settings->arrays, audio_driver);
+   PUSH_STR(L, settings->arrays, audio_resampler);
+   PUSH_STR(L, settings->arrays, input_driver);
+   PUSH_STR(L, settings->arrays, input_joypad_driver);
+   PUSH_STR(L, settings->arrays, midi_driver);
+   PUSH_STR(L, settings->arrays, midi_input);
+   PUSH_STR(L, settings->arrays, midi_output);
+#ifdef HAVE_LAKKA
+   PUSH_STR(L, settings->arrays, cpu_main_gov);
+   PUSH_STR(L, settings->arrays, cpu_menu_gov);
+#endif
+#ifdef HAVE_MICROPHONE
+   PUSH_STR(L, settings->arrays, microphone_driver);
+   PUSH_STR(L, settings->arrays, microphone_resampler);
+#endif
+   PUSH_STR(L, settings->arrays, input_keyboard_layout);
+   PUSH_STR(L, settings->arrays, cheevos_custom_host);
+#ifdef HAVE_LAKKA
+   PUSH_STR(L, settings->arrays, timezone);
+#endif
+   PUSH_STR(L, settings->arrays, cheevos_password);
+#ifdef HAVE_MICROPHONE
+   PUSH_STR(L, settings->arrays, microphone_device);
+#endif
+#ifdef ANDROID
+   PUSH_STR(L, settings->arrays, input_android_physical_keyboard);
+#endif
+   PUSH_STR(L, settings->arrays, audio_device);
+   PUSH_STR(L, settings->arrays, camera_device);
+   PUSH_STR(L, settings->arrays, netplay_mitm_server);
+   PUSH_STR(L, settings->arrays, webdav_url);
+   PUSH_STR(L, settings->arrays, webdav_username);
+   PUSH_STR(L, settings->arrays, webdav_password);
+   PUSH_STR(L, settings->arrays, crt_switch_timings);
+   //PUSH_STR(L, settings->arrays, input_reserved_devices);
+   PUSH_STR(L, settings->arrays, youtube_stream_key);
+   PUSH_STR(L, settings->arrays, twitch_stream_key);
+   PUSH_STR(L, settings->arrays, facebook_stream_key);
+   PUSH_STR(L, settings->arrays, discord_app_id);
+   PUSH_STR(L, settings->arrays, ai_service_url);
+   PUSH_STR(L, settings->arrays, translation_service_url);
+   
+   // paths
+   PUSH_STR(L, settings->paths, username);
+   PUSH_STR(L, settings->paths, netplay_password);
+   PUSH_STR(L, settings->paths, netplay_spectate_password);
+   PUSH_STR(L, settings->paths, streaming_title);
+   PUSH_STR(L, settings->paths, netplay_server);
+   PUSH_STR(L, settings->paths, netplay_custom_mitm_server);
+   PUSH_STR(L, settings->paths, network_buildbot_url);
+   PUSH_STR(L, settings->paths, network_buildbot_assets_url);
+   PUSH_STR(L, settings->paths, menu_content_show_settings_password);
+   PUSH_STR(L, settings->paths, kiosk_mode_password);
+   PUSH_STR(L, settings->paths, bundle_assets_dst_subdir);
+   PUSH_STR(L, settings->paths, directory_audio_filter);
+   PUSH_STR(L, settings->paths, directory_autoconfig);
+   PUSH_STR(L, settings->paths, directory_video_filter);
+   PUSH_STR(L, settings->paths, directory_video_shader);
+   PUSH_STR(L, settings->paths, directory_libretro);  // cores path (e.g. ~/.config/retroarch/cores)
+   PUSH_STR(L, settings->paths, directory_input_remapping);
+   PUSH_STR(L, settings->paths, directory_overlay);
+   PUSH_STR(L, settings->paths, directory_osk_overlay);
+   PUSH_STR(L, settings->paths, directory_screenshot);
+   PUSH_STR(L, settings->paths, directory_system);  // system path (e.g. ~/.config/retroarch/system)
+   PUSH_STR(L, settings->paths, directory_cache);
+   PUSH_STR(L, settings->paths, directory_playlist);
+   PUSH_STR(L, settings->paths, directory_content_favorites);
+   PUSH_STR(L, settings->paths, directory_content_history);
+   PUSH_STR(L, settings->paths, directory_content_image_history);
+   PUSH_STR(L, settings->paths, directory_content_music_history);
+   PUSH_STR(L, settings->paths, directory_content_video_history);
+   PUSH_STR(L, settings->paths, directory_runtime_log);
+   PUSH_STR(L, settings->paths, directory_core_assets);
+   PUSH_STR(L, settings->paths, directory_assets);
+   PUSH_STR(L, settings->paths, directory_dynamic_wallpapers);
+   PUSH_STR(L, settings->paths, directory_thumbnails);
+   PUSH_STR(L, settings->paths, directory_menu_config);
+   PUSH_STR(L, settings->paths, directory_menu_content); // content default path
+#ifdef _3DS
+   PUSH_STR(L, settings->paths, directory_bottom_assets);
+#endif
+   PUSH_STR(L, settings->paths, log_dir);
+#ifdef HAVE_TEST_DRIVERS
+   PUSH_STR(L, settings->paths, test_input_file_joypad);
+   PUSH_STR(L, settings->paths, test_input_file_general);
+#endif
+   PUSH_STR(L, settings->paths, bundle_assets_src);
+   PUSH_STR(L, settings->paths, bundle_assets_dst);
+   PUSH_STR(L, settings->paths, path_menu_xmb_font);
+   PUSH_STR(L, settings->paths, path_menu_ozone_font);
+   PUSH_STR(L, settings->paths, path_cheat_database);
+   PUSH_STR(L, settings->paths, path_content_database);
+   PUSH_STR(L, settings->paths, path_overlay);
+   PUSH_STR(L, settings->paths, path_osk_overlay);
+   PUSH_STR(L, settings->paths, path_record_config);
+   PUSH_STR(L, settings->paths, path_stream_config);
+   PUSH_STR(L, settings->paths, path_menu_wallpaper);
+   PUSH_STR(L, settings->paths, path_audio_dsp_plugin);
+   PUSH_STR(L, settings->paths, path_softfilter_plugin);
+   PUSH_STR(L, settings->paths, path_core_options);
+   PUSH_STR(L, settings->paths, path_content_favorites);
+   PUSH_STR(L, settings->paths, path_content_history);
+   PUSH_STR(L, settings->paths, path_content_image_history);
+   PUSH_STR(L, settings->paths, path_content_music_history);
+   PUSH_STR(L, settings->paths, path_content_video_history);
+   PUSH_STR(L, settings->paths, path_libretro_info);
+   PUSH_STR(L, settings->paths, path_cheat_settings);
+   PUSH_STR(L, settings->paths, path_font);
+   PUSH_STR(L, settings->paths, path_rgui_theme_preset);
+
+   // bools
+   PUSH_BOOL(L, settings->bools, video_fullscreen);
+   PUSH_BOOL(L, settings->bools, video_windowed_fullscreen);
+   PUSH_BOOL(L, settings->bools, video_vsync);
+   PUSH_BOOL(L, settings->bools, video_adaptive_vsync);
+   PUSH_BOOL(L, settings->bools, video_hard_sync);
+   PUSH_BOOL(L, settings->bools, video_waitable_swapchains);
+   PUSH_BOOL(L, settings->bools, video_vfilter);
+   PUSH_BOOL(L, settings->bools, video_smooth);
+   PUSH_BOOL(L, settings->bools, video_ctx_scaling);
+   PUSH_BOOL(L, settings->bools, video_force_aspect);
+   PUSH_BOOL(L, settings->bools, video_frame_delay_auto);
+   PUSH_BOOL(L, settings->bools, video_crop_overscan);
+   PUSH_BOOL(L, settings->bools, video_aspect_ratio_auto);
+   PUSH_BOOL(L, settings->bools, video_dingux_ipu_keep_aspect);
+   PUSH_BOOL(L, settings->bools, video_scale_integer);
+   PUSH_BOOL(L, settings->bools, video_shader_enable);
+   PUSH_BOOL(L, settings->bools, video_shader_watch_files);
+   PUSH_BOOL(L, settings->bools, video_shader_remember_last_dir);
+   PUSH_BOOL(L, settings->bools, video_shader_preset_save_reference_enable);
+   PUSH_BOOL(L, settings->bools, video_scan_subframes);
+   PUSH_BOOL(L, settings->bools, video_threaded);
+   PUSH_BOOL(L, settings->bools, video_font_enable);
+   PUSH_BOOL(L, settings->bools, video_disable_composition);
+   PUSH_BOOL(L, settings->bools, video_post_filter_record);
+   PUSH_BOOL(L, settings->bools, video_gpu_record);
+   PUSH_BOOL(L, settings->bools, video_gpu_screenshot);
+   PUSH_BOOL(L, settings->bools, video_allow_rotate);
+   PUSH_BOOL(L, settings->bools, video_shared_context);
+   PUSH_BOOL(L, settings->bools, video_force_srgb_disable);
+   PUSH_BOOL(L, settings->bools, video_fps_show);
+   PUSH_BOOL(L, settings->bools, video_statistics_show);
+   PUSH_BOOL(L, settings->bools, video_framecount_show);
+   PUSH_BOOL(L, settings->bools, video_memory_show);
+   PUSH_BOOL(L, settings->bools, video_msg_bgcolor_enable);
+#ifdef _3DS
+   PUSH_BOOL(L, settings->bools, video_3ds_lcd_bottom);
+#endif
+   PUSH_BOOL(L, settings->bools, video_wiiu_prefer_drc);
+   PUSH_BOOL(L, settings->bools, video_notch_write_over_enable);
+   PUSH_BOOL(L, settings->bools, video_hdr_enable);
+   PUSH_BOOL(L, settings->bools, video_hdr_expand_gamut);
+   PUSH_BOOL(L, settings->bools, video_use_metal_arg_buffers);
+   PUSH_BOOL(L, settings->bools, accessibility_enable);
+   PUSH_BOOL(L, settings->bools, audio_enable);
+   PUSH_BOOL(L, settings->bools, audio_enable_menu);
+   PUSH_BOOL(L, settings->bools, audio_enable_menu_ok);
+   PUSH_BOOL(L, settings->bools, audio_enable_menu_cancel);
+   PUSH_BOOL(L, settings->bools, audio_enable_menu_notice);
+   PUSH_BOOL(L, settings->bools, audio_enable_menu_bgm);
+   PUSH_BOOL(L, settings->bools, audio_enable_menu_scroll);
+   PUSH_BOOL(L, settings->bools, audio_sync);
+   PUSH_BOOL(L, settings->bools, audio_rate_control);
+   PUSH_BOOL(L, settings->bools, audio_fastforward_mute);
+   PUSH_BOOL(L, settings->bools, audio_fastforward_speedup);
+   PUSH_BOOL(L, settings->bools, audio_rewind_mute);
+#ifdef IOS
+   PUSH_BOOL(L, settings->bools, audio_respect_silent_mode);
+#endif
+#ifdef HAVE_WASAPI
+   PUSH_BOOL(L, settings->bools, audio_wasapi_exclusive_mode);
+   PUSH_BOOL(L, settings->bools, audio_wasapi_float_format);
+#endif
+#ifdef HAVE_MICROPHONE
+   PUSH_BOOL(L, settings->bools, microphone_enable);
+#ifdef HAVE_WASAPI
+   PUSH_BOOL(L, settings->bools, microphone_wasapi_exclusive_mode);
+   PUSH_BOOL(L, settings->bools, microphone_wasapi_float_format);
+#endif
+#endif
+   PUSH_BOOL(L, settings->bools, input_remap_binds_enable);
+   PUSH_BOOL(L, settings->bools, input_remap_sort_by_controller_enable);
+   PUSH_BOOL(L, settings->bools, input_autodetect_enable);
+   PUSH_BOOL(L, settings->bools, input_sensors_enable);
+   PUSH_BOOL(L, settings->bools, input_overlay_enable);
+   PUSH_BOOL(L, settings->bools, input_overlay_enable_autopreferred);
+   PUSH_BOOL(L, settings->bools, input_overlay_behind_menu);
+   PUSH_BOOL(L, settings->bools, input_overlay_hide_in_menu);
+   PUSH_BOOL(L, settings->bools, input_overlay_hide_when_gamepad_connected);
+   PUSH_BOOL(L, settings->bools, input_overlay_show_mouse_cursor);
+   PUSH_BOOL(L, settings->bools, input_overlay_auto_rotate);
+   PUSH_BOOL(L, settings->bools, input_overlay_auto_scale);
+   PUSH_BOOL(L, settings->bools, input_osk_overlay_auto_scale);
+   PUSH_BOOL(L, settings->bools, input_overlay_pointer_enable);
+   PUSH_BOOL(L, settings->bools, input_overlay_lightgun_trigger_on_touch);
+   PUSH_BOOL(L, settings->bools, input_overlay_lightgun_allow_offscreen);
+   PUSH_BOOL(L, settings->bools, input_overlay_mouse_hold_to_drag);
+   PUSH_BOOL(L, settings->bools, input_overlay_mouse_dtap_to_drag);
+   PUSH_BOOL(L, settings->bools, input_descriptor_label_show);
+   PUSH_BOOL(L, settings->bools, input_descriptor_hide_unbound);
+   PUSH_BOOL(L, settings->bools, input_all_users_control_menu);
+   PUSH_BOOL(L, settings->bools, input_menu_singleclick_playlists);
+   PUSH_BOOL(L, settings->bools, input_menu_allow_tabs_back);
+   PUSH_BOOL(L, settings->bools, input_menu_swap_ok_cancel_buttons);
+   PUSH_BOOL(L, settings->bools, input_menu_swap_scroll_buttons);
+   PUSH_BOOL(L, settings->bools, input_backtouch_enable);
+   PUSH_BOOL(L, settings->bools, input_backtouch_toggle);
+   PUSH_BOOL(L, settings->bools, input_small_keyboard_enable);
+   PUSH_BOOL(L, settings->bools, input_keyboard_gamepad_enable);
+   PUSH_BOOL(L, settings->bools, input_auto_mouse_grab);
+   PUSH_BOOL(L, settings->bools, input_turbo_enable);
+   PUSH_BOOL(L, settings->bools, input_turbo_allow_dpad);
+   PUSH_BOOL(L, settings->bools, input_hotkey_device_merge);
+#if defined(HAVE_DINPUT) || defined(HAVE_WINRAWINPUT)
+   PUSH_BOOL(L, settings->bools, input_nowinkey_enable);
+#endif
+#ifdef UDEV_TOUCH_SUPPORT
+   PUSH_BOOL(L, settings->bools, input_touch_vmouse_pointer);
+   PUSH_BOOL(L, settings->bools, input_touch_vmouse_mouse);
+   PUSH_BOOL(L, settings->bools, input_touch_vmouse_touchpad);
+   PUSH_BOOL(L, settings->bools, input_touch_vmouse_trackball);
+   PUSH_BOOL(L, settings->bools, input_touch_vmouse_gesture);
+#endif
+   PUSH_BOOL(L, settings->bools, frame_time_counter_reset_after_fastforwarding);
+   PUSH_BOOL(L, settings->bools, frame_time_counter_reset_after_load_state);
+   PUSH_BOOL(L, settings->bools, frame_time_counter_reset_after_save_state);
+   PUSH_BOOL(L, settings->bools, menu_enable_widgets);
+   PUSH_BOOL(L, settings->bools, menu_show_load_content_animation);
+   PUSH_BOOL(L, settings->bools, notification_show_autoconfig);
+   PUSH_BOOL(L, settings->bools, notification_show_autoconfig_fails);
+   PUSH_BOOL(L, settings->bools, notification_show_cheats_applied);
+   PUSH_BOOL(L, settings->bools, notification_show_patch_applied);
+   PUSH_BOOL(L, settings->bools, notification_show_remap_load);
+   PUSH_BOOL(L, settings->bools, notification_show_config_override_load);
+   PUSH_BOOL(L, settings->bools, notification_show_set_initial_disk);
+   PUSH_BOOL(L, settings->bools, notification_show_disk_control);
+   PUSH_BOOL(L, settings->bools, notification_show_save_state);
+   PUSH_BOOL(L, settings->bools, notification_show_fast_forward);
+#ifdef HAVE_SCREENSHOTS
+   PUSH_BOOL(L, settings->bools, notification_show_screenshot);
+#endif
+   PUSH_BOOL(L, settings->bools, notification_show_refresh_rate);
+   PUSH_BOOL(L, settings->bools, notification_show_netplay_extra);
+#ifdef HAVE_MENU
+   PUSH_BOOL(L, settings->bools, notification_show_when_menu_is_alive);
+#endif
+   PUSH_BOOL(L, settings->bools, menu_widget_scale_auto);
+   PUSH_BOOL(L, settings->bools, menu_show_start_screen);
+   PUSH_BOOL(L, settings->bools, menu_pause_libretro);
+   PUSH_BOOL(L, settings->bools, menu_savestate_resume);
+   PUSH_BOOL(L, settings->bools, menu_insert_disk_resume);
+   PUSH_BOOL(L, settings->bools, menu_timedate_enable);
+   PUSH_BOOL(L, settings->bools, menu_battery_level_enable);
+   PUSH_BOOL(L, settings->bools, menu_core_enable);
+   PUSH_BOOL(L, settings->bools, menu_show_sublabels);
+   PUSH_BOOL(L, settings->bools, menu_dynamic_wallpaper_enable);
+   PUSH_BOOL(L, settings->bools, menu_mouse_enable);
+   PUSH_BOOL(L, settings->bools, menu_pointer_enable);
+   PUSH_BOOL(L, settings->bools, menu_navigation_wraparound_enable);
+   PUSH_BOOL(L, settings->bools, menu_navigation_browser_filter_supported_extensions_enable);
+   PUSH_BOOL(L, settings->bools, menu_show_advanced_settings);
+   PUSH_BOOL(L, settings->bools, menu_linear_filter);
+   PUSH_BOOL(L, settings->bools, menu_horizontal_animation);
+   PUSH_BOOL(L, settings->bools, menu_scroll_fast);
+   PUSH_BOOL(L, settings->bools, menu_show_online_updater);
+#ifdef HAVE_MIST
+   PUSH_BOOL(L, settings->bools, menu_show_core_manager_steam);
+#endif
+   PUSH_BOOL(L, settings->bools, menu_show_core_updater);
+   PUSH_BOOL(L, settings->bools, menu_show_load_core);
+   PUSH_BOOL(L, settings->bools, menu_show_load_content);
+   PUSH_BOOL(L, settings->bools, menu_show_load_disc);
+   PUSH_BOOL(L, settings->bools, menu_show_dump_disc);
+#ifdef HAVE_LAKKA
+   PUSH_BOOL(L, settings->bools, menu_show_eject_disc);
+#endif
+   PUSH_BOOL(L, settings->bools, menu_show_information);
+   PUSH_BOOL(L, settings->bools, menu_show_configurations);
+   PUSH_BOOL(L, settings->bools, menu_show_help);
+   PUSH_BOOL(L, settings->bools, menu_show_quit_retroarch);
+   PUSH_BOOL(L, settings->bools, menu_show_restart_retroarch);
+   PUSH_BOOL(L, settings->bools, menu_show_reboot);
+   PUSH_BOOL(L, settings->bools, menu_show_shutdown);
+   PUSH_BOOL(L, settings->bools, menu_show_latency);
+   PUSH_BOOL(L, settings->bools, menu_show_rewind);
+   PUSH_BOOL(L, settings->bools, menu_show_overlays);
+   PUSH_BOOL(L, settings->bools, menu_materialui_icons_enable);
+   PUSH_BOOL(L, settings->bools, menu_materialui_playlist_icons_enable);
+   PUSH_BOOL(L, settings->bools, menu_materialui_switch_icons);
+   PUSH_BOOL(L, settings->bools, menu_materialui_show_nav_bar);
+   PUSH_BOOL(L, settings->bools, menu_materialui_auto_rotate_nav_bar);
+   PUSH_BOOL(L, settings->bools, menu_materialui_dual_thumbnail_list_view_enable);
+   PUSH_BOOL(L, settings->bools, menu_materialui_thumbnail_background_enable);
+   PUSH_BOOL(L, settings->bools, menu_thumbnail_background_enable);
+   PUSH_BOOL(L, settings->bools, menu_rgui_background_filler_thickness_enable);
+   PUSH_BOOL(L, settings->bools, menu_rgui_border_filler_thickness_enable);
+   PUSH_BOOL(L, settings->bools, menu_rgui_border_filler_enable);
+   PUSH_BOOL(L, settings->bools, menu_rgui_full_width_layout);
+   PUSH_BOOL(L, settings->bools, menu_rgui_transparency);
+   PUSH_BOOL(L, settings->bools, menu_rgui_shadows);
+   PUSH_BOOL(L, settings->bools, menu_rgui_inline_thumbnails);
+   PUSH_BOOL(L, settings->bools, menu_rgui_swap_thumbnails);
+   PUSH_BOOL(L, settings->bools, menu_rgui_extended_ascii);
+   PUSH_BOOL(L, settings->bools, menu_rgui_switch_icons);
+   PUSH_BOOL(L, settings->bools, menu_rgui_particle_effect_screensaver);
+   PUSH_BOOL(L, settings->bools, menu_xmb_shadows_enable);
+   PUSH_BOOL(L, settings->bools, menu_xmb_show_title_header);
+   PUSH_BOOL(L, settings->bools, menu_xmb_switch_icons);
+   PUSH_BOOL(L, settings->bools, menu_xmb_vertical_thumbnails);
+   PUSH_BOOL(L, settings->bools, menu_content_show_settings);
+   PUSH_BOOL(L, settings->bools, menu_content_show_favorites);
+   PUSH_BOOL(L, settings->bools, menu_content_show_favorites_first);
+   PUSH_BOOL(L, settings->bools, menu_content_show_images);
+   PUSH_BOOL(L, settings->bools, menu_content_show_music);
+   PUSH_BOOL(L, settings->bools, menu_content_show_video);
+   PUSH_BOOL(L, settings->bools, menu_content_show_netplay);
+   PUSH_BOOL(L, settings->bools, menu_content_show_history);
+   PUSH_BOOL(L, settings->bools, menu_content_show_playlists);
+   PUSH_BOOL(L, settings->bools, menu_content_show_playlist_tabs);
+   PUSH_BOOL(L, settings->bools, menu_content_show_explore);
+   PUSH_BOOL(L, settings->bools, menu_use_preferred_system_color_theme);
+   PUSH_BOOL(L, settings->bools, menu_preferred_system_color_theme_set);
+   PUSH_BOOL(L, settings->bools, menu_unified_controls);
+   PUSH_BOOL(L, settings->bools, menu_disable_info_button);
+   PUSH_BOOL(L, settings->bools, menu_disable_search_button);
+   PUSH_BOOL(L, settings->bools, menu_disable_left_analog);
+   PUSH_BOOL(L, settings->bools, menu_disable_right_analog);
+   PUSH_BOOL(L, settings->bools, menu_ticker_smooth);
+   PUSH_BOOL(L, settings->bools, menu_ignore_missing_assets);
+   PUSH_BOOL(L, settings->bools, settings_show_drivers);
+   PUSH_BOOL(L, settings->bools, settings_show_video);
+   PUSH_BOOL(L, settings->bools, settings_show_audio);
+   PUSH_BOOL(L, settings->bools, settings_show_input);
+   PUSH_BOOL(L, settings->bools, settings_show_latency);
+   PUSH_BOOL(L, settings->bools, settings_show_core);
+   PUSH_BOOL(L, settings->bools, settings_show_configuration);
+   PUSH_BOOL(L, settings->bools, settings_show_saving);
+   PUSH_BOOL(L, settings->bools, settings_show_logging);
+   PUSH_BOOL(L, settings->bools, settings_show_file_browser);
+   PUSH_BOOL(L, settings->bools, settings_show_frame_throttle);
+   PUSH_BOOL(L, settings->bools, settings_show_recording);
+   PUSH_BOOL(L, settings->bools, settings_show_onscreen_display);
+   PUSH_BOOL(L, settings->bools, settings_show_user_interface);
+   PUSH_BOOL(L, settings->bools, settings_show_ai_service);
+   PUSH_BOOL(L, settings->bools, settings_show_accessibility);
+   PUSH_BOOL(L, settings->bools, settings_show_power_management);
+   PUSH_BOOL(L, settings->bools, settings_show_achievements);
+   PUSH_BOOL(L, settings->bools, settings_show_network);
+   PUSH_BOOL(L, settings->bools, settings_show_playlists);
+   PUSH_BOOL(L, settings->bools, settings_show_user);
+   PUSH_BOOL(L, settings->bools, settings_show_directory);
+#ifdef HAVE_MIST
+   PUSH_BOOL(L, settings->bools, settings_show_steam);
+#endif
+   PUSH_BOOL(L, settings->bools, quick_menu_show_resume_content);
+   PUSH_BOOL(L, settings->bools, quick_menu_show_restart_content);
+   PUSH_BOOL(L, settings->bools, quick_menu_show_close_content);
+   PUSH_BOOL(L, settings->bools, quick_menu_show_take_screenshot);
+   PUSH_BOOL(L, settings->bools, quick_menu_show_savestate_submenu);
+   PUSH_BOOL(L, settings->bools, quick_menu_show_save_load_state);
+   PUSH_BOOL(L, settings->bools, quick_menu_show_replay);
+   PUSH_BOOL(L, settings->bools, quick_menu_show_undo_save_load_state);
+   PUSH_BOOL(L, settings->bools, quick_menu_show_add_to_favorites);
+   PUSH_BOOL(L, settings->bools, quick_menu_show_add_to_playlist);
+   PUSH_BOOL(L, settings->bools, quick_menu_show_start_recording);
+   PUSH_BOOL(L, settings->bools, quick_menu_show_start_streaming);
+   PUSH_BOOL(L, settings->bools, quick_menu_show_set_core_association);
+   PUSH_BOOL(L, settings->bools, quick_menu_show_reset_core_association);
+   PUSH_BOOL(L, settings->bools, quick_menu_show_options);
+   PUSH_BOOL(L, settings->bools, quick_menu_show_core_options_flush);
+   PUSH_BOOL(L, settings->bools, quick_menu_show_controls);
+   PUSH_BOOL(L, settings->bools, quick_menu_show_cheats);
+   PUSH_BOOL(L, settings->bools, quick_menu_show_shaders);
+   PUSH_BOOL(L, settings->bools, quick_menu_show_save_core_overrides);
+   PUSH_BOOL(L, settings->bools, quick_menu_show_save_game_overrides);
+   PUSH_BOOL(L, settings->bools, quick_menu_show_save_content_dir_overrides);
+   PUSH_BOOL(L, settings->bools, quick_menu_show_information);
+   PUSH_BOOL(L, settings->bools, quick_menu_show_recording);
+   PUSH_BOOL(L, settings->bools, quick_menu_show_streaming);
+   PUSH_BOOL(L, settings->bools, quick_menu_show_download_thumbnails);
+   PUSH_BOOL(L, settings->bools, kiosk_mode_enable);
+   PUSH_BOOL(L, settings->bools, crt_switch_custom_refresh_enable);
+   PUSH_BOOL(L, settings->bools, crt_switch_hires_menu);
+   PUSH_BOOL(L, settings->bools, netplay_show_only_connectable);
+   PUSH_BOOL(L, settings->bools, netplay_show_only_installed_cores);
+   PUSH_BOOL(L, settings->bools, netplay_show_passworded);
+   PUSH_BOOL(L, settings->bools, netplay_public_announce);
+   PUSH_BOOL(L, settings->bools, netplay_start_as_spectator);
+   PUSH_BOOL(L, settings->bools, netplay_fade_chat);
+   PUSH_BOOL(L, settings->bools, netplay_allow_pausing);
+   PUSH_BOOL(L, settings->bools, netplay_allow_slaves);
+   PUSH_BOOL(L, settings->bools, netplay_require_slaves);
+   PUSH_BOOL(L, settings->bools, netplay_nat_traversal);
+   PUSH_BOOL(L, settings->bools, netplay_use_mitm_server);
+   //PUSH_BOOL(L, settings->bools, netplay_request_devices[MAX_USERS]);
+   PUSH_BOOL(L, settings->bools, netplay_ping_show);
+   PUSH_BOOL(L, settings->bools, network_buildbot_auto_extract_archive);
+   PUSH_BOOL(L, settings->bools, network_buildbot_show_experimental_cores);
+   PUSH_BOOL(L, settings->bools, network_on_demand_thumbnails);
+   PUSH_BOOL(L, settings->bools, core_updater_auto_backup);
+   PUSH_BOOL(L, settings->bools, ui_menubar_enable);
+   PUSH_BOOL(L, settings->bools, ui_suspend_screensaver_enable);
+   PUSH_BOOL(L, settings->bools, ui_companion_start_on_boot);
+   PUSH_BOOL(L, settings->bools, ui_companion_enable);
+   PUSH_BOOL(L, settings->bools, ui_companion_toggle);
+   PUSH_BOOL(L, settings->bools, desktop_menu_enable);
+   PUSH_BOOL(L, settings->bools, cheevos_enable);
+   PUSH_BOOL(L, settings->bools, cheevos_test_unofficial);
+   PUSH_BOOL(L, settings->bools, cheevos_hardcore_mode_enable);
+   PUSH_BOOL(L, settings->bools, cheevos_richpresence_enable);
+   PUSH_BOOL(L, settings->bools, cheevos_badges_enable);
+   PUSH_BOOL(L, settings->bools, cheevos_verbose_enable);
+   PUSH_BOOL(L, settings->bools, cheevos_auto_screenshot);
+   PUSH_BOOL(L, settings->bools, cheevos_start_active);
+   PUSH_BOOL(L, settings->bools, cheevos_unlock_sound_enable);
+   PUSH_BOOL(L, settings->bools, cheevos_challenge_indicators);
+   PUSH_BOOL(L, settings->bools, cheevos_appearance_padding_auto);
+   PUSH_BOOL(L, settings->bools, cheevos_visibility_unlock);
+   PUSH_BOOL(L, settings->bools, cheevos_visibility_mastery);
+   PUSH_BOOL(L, settings->bools, cheevos_visibility_account);
+   PUSH_BOOL(L, settings->bools, cheevos_visibility_lboard_start);
+   PUSH_BOOL(L, settings->bools, cheevos_visibility_lboard_submit);
+   PUSH_BOOL(L, settings->bools, cheevos_visibility_lboard_cancel);
+   PUSH_BOOL(L, settings->bools, cheevos_visibility_lboard_trackers);
+   PUSH_BOOL(L, settings->bools, cheevos_visibility_progress_tracker);
+   PUSH_BOOL(L, settings->bools, camera_allow);
+   PUSH_BOOL(L, settings->bools, bluetooth_allow);
+   PUSH_BOOL(L, settings->bools, wifi_allow);
+   PUSH_BOOL(L, settings->bools, wifi_enabled);
+   PUSH_BOOL(L, settings->bools, location_allow);
+   PUSH_BOOL(L, settings->bools, multimedia_builtin_mediaplayer_enable);
+   PUSH_BOOL(L, settings->bools, multimedia_builtin_imageviewer_enable);
+   PUSH_BOOL(L, settings->bools, bundle_finished);
+   PUSH_BOOL(L, settings->bools, bundle_assets_extract_enable);
+   PUSH_BOOL(L, settings->bools, driver_switch_enable);
+#ifdef HAVE_MIST
+   PUSH_BOOL(L, settings->bools, steam_rich_presence_enable);
+#endif
+   PUSH_BOOL(L, settings->bools, cloud_sync_enable);
+   PUSH_BOOL(L, settings->bools, cloud_sync_destructive);
+   PUSH_BOOL(L, settings->bools, cloud_sync_sync_saves);
+   PUSH_BOOL(L, settings->bools, cloud_sync_sync_configs);
+   PUSH_BOOL(L, settings->bools, cloud_sync_sync_thumbs);
+   PUSH_BOOL(L, settings->bools, cloud_sync_sync_system);
+   PUSH_BOOL(L, settings->bools, discord_enable);
+   PUSH_BOOL(L, settings->bools, threaded_data_runloop_enable);
+   PUSH_BOOL(L, settings->bools, set_supports_no_game_enable);
+   PUSH_BOOL(L, settings->bools, auto_screenshot_filename);
+   PUSH_BOOL(L, settings->bools, history_list_enable);
+   PUSH_BOOL(L, settings->bools, playlist_entry_rename);
+   PUSH_BOOL(L, settings->bools, rewind_enable);
+   PUSH_BOOL(L, settings->bools, fastforward_frameskip);
+   PUSH_BOOL(L, settings->bools, vrr_runloop_enable);
+   PUSH_BOOL(L, settings->bools, menu_throttle_framerate);
+   PUSH_BOOL(L, settings->bools, apply_cheats_after_toggle);
+   PUSH_BOOL(L, settings->bools, apply_cheats_after_load);
+   PUSH_BOOL(L, settings->bools, run_ahead_enabled);
+   PUSH_BOOL(L, settings->bools, run_ahead_secondary_instance);
+   PUSH_BOOL(L, settings->bools, run_ahead_hide_warnings);
+   PUSH_BOOL(L, settings->bools, preemptive_frames_enable);
+   PUSH_BOOL(L, settings->bools, pause_nonactive);
+   PUSH_BOOL(L, settings->bools, pause_on_disconnect);
+   PUSH_BOOL(L, settings->bools, block_sram_overwrite);
+   PUSH_BOOL(L, settings->bools, replay_auto_index);
+   PUSH_BOOL(L, settings->bools, savestate_auto_index);
+   PUSH_BOOL(L, settings->bools, savestate_auto_save);
+   PUSH_BOOL(L, settings->bools, savestate_auto_load);
+   PUSH_BOOL(L, settings->bools, savestate_thumbnail_enable);
+   PUSH_BOOL(L, settings->bools, save_file_compression);
+   PUSH_BOOL(L, settings->bools, savestate_file_compression);
+   PUSH_BOOL(L, settings->bools, network_cmd_enable);
+   PUSH_BOOL(L, settings->bools, stdin_cmd_enable);
+   PUSH_BOOL(L, settings->bools, keymapper_enable);
+   PUSH_BOOL(L, settings->bools, network_remote_enable);
+   //PUSH_BOOL(L, settings->bools, network_remote_enable_user[MAX_USERS]);
+   PUSH_BOOL(L, settings->bools, load_dummy_on_core_shutdown);
+   PUSH_BOOL(L, settings->bools, check_firmware_before_loading);
+   PUSH_BOOL(L, settings->bools, core_option_category_enable);
+   PUSH_BOOL(L, settings->bools, core_info_cache_enable);
+   PUSH_BOOL(L, settings->bools, core_info_savestate_bypass);
+#ifndef HAVE_DYNAMIC
+   PUSH_BOOL(L, settings->bools, always_reload_core_on_run_content);
+#endif
+   PUSH_BOOL(L, settings->bools, game_specific_options);
+   PUSH_BOOL(L, settings->bools, auto_overrides_enable);
+   PUSH_BOOL(L, settings->bools, auto_remaps_enable);
+   PUSH_BOOL(L, settings->bools, initial_disk_change_enable);
+   PUSH_BOOL(L, settings->bools, global_core_options);
+   PUSH_BOOL(L, settings->bools, auto_shaders_enable);
+   PUSH_BOOL(L, settings->bools, sort_savefiles_enable);
+   PUSH_BOOL(L, settings->bools, sort_savestates_enable);
+   PUSH_BOOL(L, settings->bools, sort_savefiles_by_content_enable);
+   PUSH_BOOL(L, settings->bools, sort_savestates_by_content_enable);
+   PUSH_BOOL(L, settings->bools, sort_screenshots_by_content_enable);
+   PUSH_BOOL(L, settings->bools, config_save_on_exit);
+   PUSH_BOOL(L, settings->bools, remap_save_on_exit);
+   PUSH_BOOL(L, settings->bools, show_hidden_files);
+   PUSH_BOOL(L, settings->bools, filter_by_current_core);
+   PUSH_BOOL(L, settings->bools, use_last_start_directory);
+   PUSH_BOOL(L, settings->bools, core_suggest_always);
+   PUSH_BOOL(L, settings->bools, savefiles_in_content_dir);
+   PUSH_BOOL(L, settings->bools, savestates_in_content_dir);
+   PUSH_BOOL(L, settings->bools, screenshots_in_content_dir);
+   PUSH_BOOL(L, settings->bools, systemfiles_in_content_dir);
+   PUSH_BOOL(L, settings->bools, ssh_enable);
+#ifdef HAVE_LAKKA_SWITCH
+   PUSH_BOOL(L, settings->bools, switch_oc);
+   PUSH_BOOL(L, settings->bools, switch_cec);
+   PUSH_BOOL(L, settings->bools, bluetooth_ertm_disable);
+#endif
+   PUSH_BOOL(L, settings->bools, samba_enable);
+   PUSH_BOOL(L, settings->bools, bluetooth_enable);
+   PUSH_BOOL(L, settings->bools, localap_enable);
+   PUSH_BOOL(L, settings->bools, video_window_show_decorations);
+   PUSH_BOOL(L, settings->bools, video_window_save_positions);
+   PUSH_BOOL(L, settings->bools, video_window_custom_size_enable);
+   PUSH_BOOL(L, settings->bools, sustained_performance_mode);
+   PUSH_BOOL(L, settings->bools, playlist_use_old_format);
+   PUSH_BOOL(L, settings->bools, playlist_compression);
+   PUSH_BOOL(L, settings->bools, content_runtime_log);
+   PUSH_BOOL(L, settings->bools, content_runtime_log_aggregate);
+   PUSH_BOOL(L, settings->bools, playlist_sort_alphabetical);
+   PUSH_BOOL(L, settings->bools, playlist_show_sublabels);
+   PUSH_BOOL(L, settings->bools, playlist_show_entry_idx);
+   PUSH_BOOL(L, settings->bools, playlist_fuzzy_archive_match);
+   PUSH_BOOL(L, settings->bools, playlist_portable_paths);
+   PUSH_BOOL(L, settings->bools, playlist_use_filename);
+   PUSH_BOOL(L, settings->bools, playlist_allow_non_png);
+   PUSH_BOOL(L, settings->bools, quit_press_twice);
+   PUSH_BOOL(L, settings->bools, vibrate_on_keypress);
+   PUSH_BOOL(L, settings->bools, enable_device_vibration);
+   PUSH_BOOL(L, settings->bools, ozone_collapse_sidebar);
+   PUSH_BOOL(L, settings->bools, ozone_truncate_playlist_name);
+   PUSH_BOOL(L, settings->bools, ozone_sort_after_truncate_playlist_name);
+   PUSH_BOOL(L, settings->bools, ozone_scroll_content_metadata);
+   PUSH_BOOL(L, settings->bools, log_to_file);
+   PUSH_BOOL(L, settings->bools, log_to_file_timestamp);
+   PUSH_BOOL(L, settings->bools, scan_without_core_match);
+   PUSH_BOOL(L, settings->bools, scan_serial_and_crc);
+   PUSH_BOOL(L, settings->bools, ai_service_enable);
+   PUSH_BOOL(L, settings->bools, ai_service_pause);
+   PUSH_BOOL(L, settings->bools, gamemode_enable);
+#ifdef HAVE_BSV_MOVIE
+   PUSH_BOOL(L, settings->bools, replay_checkpoint_deserialize);
+#endif
+#ifdef _3DS
+   PUSH_BOOL(L, settings->bools, new3ds_speedup_enable);
+   PUSH_BOOL(L, settings->bools, bottom_font_enable);
+#endif
+#ifdef ANDROID
+   PUSH_BOOL(L, settings->bools, android_input_disconnect_workaround);
+#endif
+#if defined(HAVE_COCOATOUCH)
+   PUSH_BOOL(L, settings->bools, gcdwebserver_alert);
+#endif
+#ifdef HAVE_GAME_AI
+   PUSH_BOOL(L, settings->bools, quick_menu_show_game_ai);
+   PUSH_BOOL(L, settings->bools, game_ai_override_p1);
+   PUSH_BOOL(L, settings->bools, game_ai_override_p2);
+   PUSH_BOOL(L, settings->bools, game_ai_show_debug);
+#endif
 
    return 1;
 }
@@ -1602,46 +2481,70 @@ int emu_getsystemid(lua_State *L)
 {
    core_info_t *core_info     = NULL;
    core_info_get_current_core(&core_info);
-   char* sysid = core_info->system_id;  // read only, could be NULL
-   if (sysid)
+   if (!core_info || !core_info->system_id)
    {
-      sysid = strdup(sysid);  // TODO: never freed
-      // make sure it is in uppercase ("nes"->"NES")
-      string_to_upper(sysid);
-      // try to match Bizhawk names
-      if (string_is_equal(sysid, "super_nes")) sysid = "SNES";
-      if (string_is_equal(sysid, "mega_drive")) sysid = "GEN";
-      if (string_is_equal(sysid, "master_system")) sysid = "SMS";
-      if (string_is_equal(sysid, "game_boy")) sysid = "GB";
-      if (string_is_equal(sysid, "game_boy_advance")) sysid = "GBA";
-      if (string_is_equal(sysid, "pc_engine")) sysid = "PCE";
-      if (string_is_equal(sysid, "sega_saturn")) sysid = "SAT";
-      if (string_is_equal(sysid, "playstation")) sysid = "PSX";
-      if (string_is_equal(sysid, "commodore_64")) sysid = "C64";
-      if (string_is_equal(sysid, "nintendo_64")) sysid = "N64";
-      if (string_is_equal(sysid, "virtual_boy")) sysid = "VB";
-      if (string_is_equal(sysid, "wonderswan")) sysid = "WSWAN";
-      if (string_is_equal(sysid, "neo_geo_pocket")) sysid = "NGP";
-      // TODO: more matches
+      lua_pushstring(L, ""); 
+      return 1;
    }
-   lua_pushstring(L, sysid ? sysid : "");
+   char* sysid = core_info->system_id;  // read only, could be NULL
+   char* r = NULL;
+
+   // try to match Bizhawk names
+   if (string_is_equal(sysid, "super_nes")) r = "SNES";
+   if (string_is_equal(sysid, "mega_drive")) r = "GEN";
+   if (string_is_equal(sysid, "master_system")) r = "SMS";
+   if (string_is_equal(sysid, "game_boy")) r = "GB";
+   if (string_is_equal(sysid, "game_boy_advance")) r = "GBA";
+   if (string_is_equal(sysid, "pc_engine")) r = "PCE";
+   if (string_is_equal(sysid, "sega_saturn")) r = "SAT";
+   if (string_is_equal(sysid, "playstation")) r = "PSX";
+   if (string_is_equal(sysid, "commodore_64")) r = "C64";
+   if (string_is_equal(sysid, "nintendo_64")) r = "N64";
+   if (string_is_equal(sysid, "virtual_boy")) r = "VB";
+   if (string_is_equal(sysid, "wonderswan")) r = "WSWAN";
+   if (string_is_equal(sysid, "neo_geo_pocket")) r = "NGP";
+   // TODO: more matches
+   
+   if(r)
+   {
+      lua_pushstring(L, r);
+      return 1;
+   }
+   // else
+   // Fallback: Duplicate the original ID, uppercase it, then free it
+   r = strdup(sysid);
+   string_to_upper(r);  // make sure it is in uppercase ("nes"->"NES")
+   lua_pushstring(L, r);
+   free(r);
    return 1;
 }
 
-#if !defined(RARCH_CONSOLE) && defined(RARCH_INTERNAL)
 // emu.getdir()
 // Returns the path of retroarch.exe as a string.
 int emu_getdir(lua_State *L)
 {
    settings_t *settings         = config_get_ptr();
-   //const char* r = strdup(settings->paths.directory_system);  // /system
-   //const char* r = path_get(RARCH_PATH_CONFIG);  // /system
+#if !defined(RARCH_CONSOLE) && defined(RARCH_INTERNAL)
    char app_path[PATH_MAX_LENGTH]       = {0};
    fill_pathname_application_dir(app_path, sizeof(app_path));  // main exe   
-   lua_pushstring(L, strdup(app_path));
+#else
+   const char* app_path = settings->paths.directory_menu_config;
+#endif
+   lua_pushstring(L, app_path);
    return 1;
 }
-#endif
+
+// emu.getcorename()
+// Returns the current core name
+int emu_getcorename(lua_State *L)
+{
+   struct retro_system_info *system = &runloop_state_get_ptr()->system.info;
+   if (system && system->library_name)
+      lua_pushstring(L, system->library_name);
+   else
+      lua_pushnil(L);
+   return 1;
+}
 
 // emu.getscreenpixel(int x, int y, bool getemuscreen)
 // Returns the separate RGB components of the given screen pixel, and the palette. Can be 0-255 by 0-239, but NTSC only displays 0-255 x 8-231 of it.
@@ -2161,7 +3064,6 @@ int gui_drawString_impl(lua_State *L, bool convert_coords)
 
    // apply font and scaling
    settings_t *settings         = config_get_ptr();
-   //const float CONFIG_FONT_SIZE = 32.0f;  // BASE_FONT_SIZE as defined in gfx_widgets.c
    const float CONFIG_FONT_SIZE = settings->floats.video_font_size;
    //RARCH_LOG("CONFIG_FONT_SIZE: %f\n", CONFIG_FONT_SIZE);
    const char* DEFAULT_FONT_FACE = settings->paths.path_font;  // defaults to ""
@@ -2170,6 +3072,9 @@ int gui_drawString_impl(lua_State *L, bool convert_coords)
    float font_size = luaL_optinteger(L, 6, CONFIG_FONT_SIZE);
    char* font_face = luaL_optstring(L, 7, DEFAULT_FONT_FACE);
    //char* font_face = luaL_optstring(L, 7, "");
+   
+   if (font_size <= 0)
+      font_size = CONFIG_FONT_SIZE;  // reset to default
    
    if (curr_shape->font.font && curr_shape->font.font != p_dispwidget->gfx_widget_fonts.regular.font)  // TODO: better comparison
    {
@@ -2480,9 +3385,9 @@ static const struct luaL_Reg  emulib[] = {
    { "message" ,  gui_addmessage },
    { "print" ,  console_log },
    { "emulating", client_emulating },
-#if !defined(RARCH_CONSOLE) && defined(RARCH_INTERNAL)
    { "getdir", emu_getdir },
-#endif
+   { "getcorename", emu_getcorename },
+   //TODO: { "getcorepath", emu_getcorepath },
    // TODO: "poweron"
    // TODO: "loadrom"
    {NULL,NULL}
