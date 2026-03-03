@@ -55,16 +55,12 @@
 // LUA API based on Bizhawk https://tasvideos.org/Bizhawk/LuaFunctions
 
 
-
-
-
-
 static lua_State *co = NULL;
 
 static unsigned int current_memory_domain = RETRO_MEMORY_SYSTEM_RAM;
 static const char* memory_domains_list_names[] = { "Battery RAM", "RTC", "RAM", "VRAM", "ROM" };
 
-static bool LUA_SCRIPTS_SANDBOXED=false;
+static bool LUA_SCRIPTS_SANDBOXED=false;  // TODO: turn into user setting
 
 
 typedef int (*print_fn)(const char *fmt, ...);
@@ -2257,6 +2253,7 @@ int memory_writefloat(lua_State *L)
    return 0;
 }
 
+
 // rom.readbyte(int address)
 // Get an unsigned byte from the actual ROM file at the given address.  
 int rom_readbyte(lua_State *L)
@@ -2415,6 +2412,36 @@ int memory_write_bytes_as_array(lua_State *L)
    return 0;
 }
 
+// void memory.write_bytes_as_dict(nluatable addrmap, [string domain = nil])
+// Writes bytes at arbitrary addresses (the keys of the given table are the addresses, relative to the start of the domain).
+int memory_write_bytes_as_dict(lua_State *L)
+{
+   const unsigned int domain = get_memory_domain_arg(L, 2);
+   uint8_t *data = get_memory_ptr(L, domain);
+   size_t memsize = get_memory_size(domain);
+   
+   luaL_checktype(L, 1, LUA_TTABLE);
+   lua_pushnil(L); 
+   while (lua_next(L, 1) != 0)   // Iterate through the table
+   {
+      if (!lua_isnumber(L, -2)) {
+         lua_pop(L, 1);
+         continue;      // skip non-numeric keys
+      }
+      size_t address = (size_t)lua_tointeger(L, -2);
+      uint8_t byte = (uint8_t)luaL_checkinteger(L, -1);
+      
+      if (address < memsize)
+         data[address] = byte;
+      else
+         return luaL_error(L, "Address 0x%zX out of bounds for domain", address);
+
+      lua_pop(L, 1);
+   }
+
+   return 0;
+}
+
 // nluatable memory.readbyterange(long addr, int length, [string domain = nil])
 // Reads the address range that starts from address, and is length long. Returns a zero-indexed table containing the read values (an array of bytes.)
 int memory_readbyterange(lua_State *L)
@@ -2436,6 +2463,36 @@ int memory_readbyterange(lua_State *L)
    return 1;
 }
 
+// void memory.dump(filename, [string domain = nil], [ long start_address = 0 ], [long stop_address = end])
+// Dump a memory region into a file
+int memory_dump(lua_State *L)
+{
+   if (LUA_SCRIPTS_SANDBOXED)
+      return luaL_error(L, "cannot write files in sandboxed mode");
+
+   const char *filename = luaL_checkstring(L, 1);
+   const unsigned int domain = get_memory_domain_arg(L, 2);
+   size_t memsize = get_memory_size(domain);   
+   const size_t start_address = (size_t)luaL_optinteger(L, 3, 0);
+   const size_t stop_address = (size_t)luaL_optinteger(L, 4, memsize - 1);
+   
+   const size_t dump_size = stop_address - start_address + 1;
+   check_memory_range(L, start_address, dump_size, domain);
+   
+   uint8_t *data = get_memory_ptr(L, domain);
+   
+   FILE *file = fopen(filename, "wb");
+   if (!file)
+      return luaL_error(L, "failed to open file for writing: %s", filename);
+   
+   size_t written = fwrite(data + start_address, 1, dump_size, file);
+   fclose(file);
+
+   if (written != dump_size)
+      return luaL_error(L, "I/O error: only wrote %zu of %zu bytes", written, dump_size);
+   
+   return 0;
+}
 
 // bool memory.usememorydomain(string domain)
 // Attempts to set the current memory domain to the given domain. If the name does not match a valid memory domain, the function returns false, else it returns true
@@ -2741,10 +2798,6 @@ static unsigned convert_to_screen_space(unsigned x, unsigned y,
    
    struct video_viewport vp = {0};
    video_driver_get_viewport_info(&vp);
-   //unsigned SCREEN_PADDING_X = 3;
-   //const unsigned SCREEN_PADDING_X   = dispwidget_get_ptr()->msg_queue_rect_start_x;
-   //const unsigned SCREEN_PADDING_X  = dispwidget_get_ptr()->simple_widget_padding;
-
    video_driver_state_t *video_st = video_state_get_ptr();
    unsigned fb_w = video_st->av_info.geometry.base_width;
    unsigned fb_h = video_st->av_info.geometry.base_height;
@@ -2752,22 +2805,10 @@ static unsigned convert_to_screen_space(unsigned x, unsigned y,
    //RARCH_LOG("screen: %u %u \n", fb_w, fb_h ) ; 
    //RARCH_LOG("viewport: %u %u %u %u %u %u \n", vp.x , vp.y, vp.width , vp.height,vp.full_width, vp.full_height ) ; 
 
-/*
    gfx_display_t *p_disp     = disp_get_ptr();
-     unsigned fb_width         = p_disp->framebuf_width;
-     unsigned fb_height         = p_disp->framebuf_height;
-  */
-  
-  // TODO: try as alternative:
-  /*
-  video_driver_translate_coord_viewport(
-     struct video_viewport *vp,
-     int mouse_x,         int mouse_y,
-     int16_t *res_x,      int16_t *res_y,
-     int16_t *res_screen_x, int16_t *res_screen_y,
-     bool report_oob)
-   */
-        
+   //  unsigned fb_w         = p_disp->framebuf_width;
+   //  unsigned fb_h         = p_disp->framebuf_height;
+           
    if (x)
       return vp.x + (unsigned)((float)x / fb_w * vp.width);
    if (y)
@@ -3514,7 +3555,7 @@ static const struct luaL_Reg  memorylib [] = {
    { "write_u32_be" ,  memory_write_u32_be },
    { "write_u32_le" ,  memory_write_u32_le },
    { "write_bytes_as_array" ,  memory_write_bytes_as_array },
-   //TODO: { "write_bytes_as_dict" ,  memory_write_bytes_as_dict },
+   { "write_bytes_as_dict" ,  memory_write_bytes_as_dict },
    // FCEUX-aliases
    { "readbyteunsigned" ,  memory_readbyte },
    { "readbytesigned" ,  memory_readbytesigned },
@@ -3523,7 +3564,7 @@ static const struct luaL_Reg  memorylib [] = {
    { "readfloat" ,  memory_readfloat },
    { "writefloat" ,  memory_writefloat },
    // new functions:
-   // TODO: memory.dump(filename, domain, start_address=0, stop_address) // dump a memory region into a file
+   { "dump" ,  memory_dump },
    // TODO: memory.search(pattern, domain, start_address=0, stop_address) // search for a byte pattern, returns the address of the first match.
    {NULL,NULL}
 };
