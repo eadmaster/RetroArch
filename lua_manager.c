@@ -2050,7 +2050,7 @@ uint8_t* get_memory_ptr(lua_State *L, const unsigned int domain)
 unsigned int get_memory_domain_arg_fallback(lua_State *L, const int DOMAIN_ARG_POS, bool fallback)
 {
    unsigned int domain = current_memory_domain;
-   if (lua_gettop(L) >= DOMAIN_ARG_POS)  // 3 for write functions, 2 for read functions
+   if (!lua_isnoneornil(L, DOMAIN_ARG_POS))  // 3 for write functions, 2 for read functions
    {
          const char *domain_str = luaL_checkstring(L, DOMAIN_ARG_POS);  // domain arg passed
          if (strcasecmp(domain_str, "RAM")==0 || strcasecmp(domain_str, "WRAM")==0 || strcasecmp(domain_str, "Main Memory")==0)
@@ -3053,6 +3053,10 @@ uint32_t read_color_arg(lua_State *L, const int ARG_NO, const uint32_t DEFAULT_C
             else if (strcasecmp(color_str, "blue") == 0)
                return 0x0000FFFF;
             break;
+         case 'c':
+            if (strcasecmp(color_str, "cyan") == 0)
+               return 0x00FFFFFF;
+            break;
          case 'w':
             if (strcasecmp(color_str, "white") == 0)
                return 0xFFFFFFFF;
@@ -3064,14 +3068,22 @@ uint32_t read_color_arg(lua_State *L, const int ARG_NO, const uint32_t DEFAULT_C
          case 'g':
             if (strcasecmp(color_str, "green") == 0)
                return 0x00FF00FF;
+            else if (strcasecmp(color_str, "gray") == 0 || strcasecmp(color_str, "grey") == 0)
+               return 0x808080FF;
             break;
          case 'p':
             if (strcasecmp(color_str, "pink") == 0)
                return 0xFFC0CBFF;
+            else if (strcasecmp(color_str, "purple") == 0)
+               return 0x800080FF;
             break;
          case 'y':
             if (strcasecmp(color_str, "yellow") == 0)
                return 0xFFFF00FF;
+            break;
+         case 'm':
+            if (strcasecmp(color_str, "magenta") == 0)
+               return 0xFF00FFFF;
             break;
          case '#':
          {
@@ -3316,6 +3328,35 @@ int gui_drawRectangle_impl(lua_State *L, bool convert_coords)
    return 0;
 }
 
+// void gui.drawBox(int x, int y, int x2, int y2, [luacolor line = nil], [luacolor background = nil], [string surfacename = nil])
+// Draws a rectangle on screen from x1/y1 to x2/y2. Same as drawRectangle except it receives two points intead of a point and width/height
+int gui_drawBox(lua_State *L)
+{
+   int x1 = (int)luaL_checkinteger(L, 1);
+   int y1 = (int)luaL_checkinteger(L, 2);
+   int x2 = (int)luaL_checkinteger(L, 3);
+   int y2 = (int)luaL_checkinteger(L, 4);
+
+   // Calculate Top-Left corner (x, y)
+   int x = (x1 < x2) ? x1 : x2;
+   int y = (y1 < y2) ? y1 : y2;
+
+   // Calculate Width and Height
+   int width  = abs(x2 - x1);
+   int height = abs(y2 - y1);
+
+   // Replace the coordinate arguments on the stack with our calculated x, y, w, h
+   lua_pushinteger(L, x);
+   lua_replace(L, 1);
+   lua_pushinteger(L, y);
+   lua_replace(L, 2);
+   lua_pushinteger(L, width);
+   lua_replace(L, 3);
+   lua_pushinteger(L, height);
+   lua_replace(L, 4);
+   
+   return gui_drawRectangle_impl(L, true);
+}
 
 // void gui.drawRectangle(int x, int y, int width, int height, [luacolor line = nil], [luacolor background = nil], [string surfacename = nil])
 // Draws a rectangle at the given coordinate and the given width and height. Line is the color of the box. Background is the optional fill color
@@ -3475,12 +3516,12 @@ static const struct luaL_Reg  guilib[] = {
    { "text" ,  gui_drawPixelText },
    { "drawRectangle" ,  gui_drawRectangle },
    { "drawRectangleO" ,  gui_drawRectangleO },
+   { "drawBox" ,  gui_drawBox },
    //{ "drawPixel" ,  gui_drawPixel },
    { "clearGraphics" ,  gui_clearGraphics },
    { "cleartext" ,  gui_clearGraphics },
    //TODO: drawLine
    //TODO: drawImage
-   //TODO: drawBox
    // FCEUX-aliases
    { "text", gui_drawString },
    { "drawtext", gui_drawString },
